@@ -17,8 +17,10 @@ defmodule Edict.Enforcement.LiveView do
 
   import Phoenix.Component, only: [assign: 3]
 
-  alias Edict.Cache.{Document, Store}
+  alias Edict.Cache.Document
   alias Edict.Enforcement.Helpers
+
+  require Logger
 
   def on_mount(opts, params, _session, socket) do
     edict_config = opts[:edict_config] || socket.assigns[:edict_config]
@@ -27,7 +29,7 @@ defmodule Edict.Enforcement.LiveView do
     entity_type = opts.entity_type
     entity_id = opts.entity_from.(params)
 
-    document = load_document(edict_config, user_id)
+    document = Helpers.load_document(edict_config, user_id)
 
     if Helpers.can?(document, opts.action, entity_type, to_string(entity_id), config_module) do
       roles = Document.roles_for(document, entity_type, to_string(entity_id))
@@ -54,7 +56,9 @@ defmodule Edict.Enforcement.LiveView do
 
     socket
   rescue
-    _ -> socket
+    e ->
+      Logger.warning("Edict: PubSub subscribe failed: #{inspect(e)}")
+      socket
   end
 
   defp maybe_attach_hook(socket, edict_config) do
@@ -64,44 +68,15 @@ defmodule Edict.Enforcement.LiveView do
         current_user_id = config_module.user_id_from_assigns(socket.assigns)
 
         if user_id == current_user_id do
-          doc = reload_document(edict_config, user_id)
+          doc = Helpers.load_document(edict_config, user_id)
           {:cont, assign(socket, :edict_document, doc)}
         else
           {:cont, socket}
         end
     end)
   rescue
-    _ -> socket
-  end
-
-  defp load_document(config, user_id) do
-    case Store.get_document(config.cache, user_id) do
-      {:ok, doc} ->
-        {:ok, current_version} = Store.get_version(config.cache, user_id)
-
-        if doc.version == current_version do
-          doc
-        else
-          rebuild_document(config, user_id)
-        end
-
-      :miss ->
-        rebuild_document(config, user_id)
-    end
-  end
-
-  defp reload_document(config, user_id) do
-    case Store.get_document(config.cache, user_id) do
-      {:ok, doc} -> doc
-      :miss -> rebuild_document(config, user_id)
-    end
-  end
-
-  defp rebuild_document(config, user_id) do
-    role_rows = Edict.Core.list_roles(config, user_id)
-    {:ok, version} = Store.get_version(config.cache, user_id)
-    doc = Document.new(user_id, role_rows, version)
-    Store.put_document(config.cache, user_id, doc)
-    doc
+    e ->
+      Logger.warning("Edict: attach_hook failed: #{inspect(e)}")
+      socket
   end
 end

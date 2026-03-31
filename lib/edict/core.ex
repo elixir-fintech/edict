@@ -96,19 +96,24 @@ defmodule Edict.Core do
     entity_type_str = to_string(entity_type)
     entity_id_str = to_string(entity_id)
 
-    affected_user_ids =
-      config.repo.all(
-        from ur in UserRole,
-          where: ur.entity_type == ^entity_type_str and ur.entity_id == ^entity_id_str,
-          distinct: true,
-          select: ur.user_id
-      )
+    {:ok, {count, affected_user_ids}} =
+      config.repo.transaction(fn ->
+        affected_user_ids =
+          config.repo.all(
+            from ur in UserRole,
+              where: ur.entity_type == ^entity_type_str and ur.entity_id == ^entity_id_str,
+              distinct: true,
+              select: ur.user_id
+          )
 
-    {count, _} =
-      config.repo.delete_all(
-        from ur in UserRole,
-          where: ur.entity_type == ^entity_type_str and ur.entity_id == ^entity_id_str
-      )
+        {count, _} =
+          config.repo.delete_all(
+            from ur in UserRole,
+              where: ur.entity_type == ^entity_type_str and ur.entity_id == ^entity_id_str
+          )
+
+        {count, affected_user_ids}
+      end)
 
     Enum.each(affected_user_ids, fn uid ->
       invalidate_cache(config, uid)
@@ -129,17 +134,37 @@ defmodule Edict.Core do
           {:ok, [UserRole.t()]} | {:error, atom()}
   def assign_roles(config, user_id, role, entities) do
     with :ok <- validate_role(config, role) do
-      results =
-        Enum.map(entities, fn {entity_type, entity_id} ->
-          assign_role(config, user_id, role, entity_type, entity_id)
+      invalid =
+        Enum.find(entities, fn {entity_type, _} ->
+          not config.config_module.valid_entity_type?(entity_type)
         end)
 
-      errors = Enum.filter(results, &match?({:error, _}, &1))
-
-      if errors == [] do
-        {:ok, Enum.map(results, fn {:ok, r} -> r end)}
+      if invalid do
+        {:error, :invalid_entity_type}
       else
-        hd(errors)
+        user_id_str = to_string(user_id)
+        role_str = to_string(role)
+        now = DateTime.utc_now()
+
+        entries =
+          Enum.map(entities, fn {entity_type, entity_id} ->
+            %{
+              id: Ecto.UUID.generate(),
+              user_id: user_id_str,
+              entity_type: to_string(entity_type),
+              entity_id: to_string(entity_id),
+              role: role_str,
+              inserted_at: now
+            }
+          end)
+
+        config.repo.insert_all(UserRole, entries,
+          on_conflict: :nothing,
+          conflict_target: [:user_id, :entity_type, :entity_id, :role]
+        )
+
+        invalidate_cache(config, user_id_str)
+        {:ok, entries}
       end
     end
   end

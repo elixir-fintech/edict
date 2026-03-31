@@ -111,8 +111,13 @@ defmodule Edict do
     roles = Edict.Core.list_roles(conf, user_id)
     {:ok, version} = Store.get_version(conf.cache, user_id)
 
-    version = if version == 0, do: 1, else: version
-    if version == 1, do: Store.set_version(conf.cache, user_id, 1)
+    version =
+      if version == 0 do
+        Store.set_version(conf.cache, user_id, 1)
+        1
+      else
+        version
+      end
 
     role_maps =
       Enum.map(roles, fn r ->

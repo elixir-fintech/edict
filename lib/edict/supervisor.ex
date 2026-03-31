@@ -6,6 +6,15 @@ defmodule Edict.Supervisor do
   - Cachex instance for authorization documents
   - PubSub listener for cross-node version bumps
 
+  ## Configuration
+
+  The consuming application must set Edict config before starting the supervisor:
+
+      config :edict,
+        repo: MyApp.Repo,
+        config_module: MyApp.AuthConfig,
+        pubsub: MyApp.PubSub
+
   ## Usage
 
       children = [
@@ -27,14 +36,8 @@ defmodule Edict.Supervisor do
   @impl true
   def init(opts) do
     pubsub = Keyword.fetch!(opts, :pubsub)
-    cache_name = Keyword.get(opts, :cache_name, :edict_cache)
-    topic = Keyword.get(opts, :topic, "edict:versions")
-    ttl = Keyword.get(opts, :ttl, Application.get_env(:edict, :ttl, :timer.minutes(10)))
-
-    Application.put_env(:edict, :cache, cache_name)
-    Application.put_env(:edict, :pubsub, pubsub)
-    Application.put_env(:edict, :topic, topic)
-    Application.put_env(:edict, :ttl, ttl)
+    cache_name = Keyword.get(opts, :cache_name, Application.get_env(:edict, :cache, :edict_cache))
+    topic = Keyword.get(opts, :topic, Application.get_env(:edict, :topic, "edict:versions"))
 
     children = [
       {Cachex, name: cache_name},

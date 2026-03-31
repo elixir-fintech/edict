@@ -24,12 +24,24 @@ defmodule Edict.Cache.Document do
   def new(user_id, role_rows, version) do
     roles =
       role_rows
-      |> Enum.group_by(
-        fn row -> {String.to_existing_atom(row.entity_type), row.entity_id} end,
-        fn row -> String.to_existing_atom(row.role) end
-      )
+      |> Enum.reduce(%{}, fn row, acc ->
+        with {:ok, entity_type} <- safe_to_existing_atom(row.entity_type),
+             {:ok, role} <- safe_to_existing_atom(row.role) do
+          key = {entity_type, row.entity_id}
+          Map.update(acc, key, [role], &[role | &1])
+        else
+          :error -> acc
+        end
+      end)
+      |> Map.new(fn {key, roles} -> {key, Enum.reverse(roles)} end)
 
     %__MODULE__{user_id: user_id, version: version, roles: roles}
+  end
+
+  defp safe_to_existing_atom(str) when is_binary(str) do
+    {:ok, String.to_existing_atom(str)}
+  rescue
+    ArgumentError -> :error
   end
 
   @doc """
