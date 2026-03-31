@@ -25,44 +25,46 @@ defmodule Edict do
   alias Edict.Cache.{Document, Store}
   alias Edict.Enforcement.Helpers
 
+  @type id :: String.t() | integer()
+
   # --- Role Management ---
 
   @doc "Assigns a role to a user on an entity."
-  @spec assign_role(String.t(), atom(), atom(), String.t()) ::
-          {:ok, Edict.Schema.UserRole.t()} | {:error, atom()}
+  @spec assign_role(id(), atom(), atom(), id()) ::
+          {:ok, Edict.Schema.UserRole.t() | :already_assigned} | {:error, atom()}
   def assign_role(user_id, role, entity_type, entity_id) do
-    Edict.Core.assign_role(config(), user_id, role, entity_type, entity_id)
+    Edict.Core.assign_role(config(), to_string(user_id), role, entity_type, to_string(entity_id))
   end
 
   @doc "Revokes a specific role from a user on an entity."
-  @spec revoke_role(String.t(), atom(), atom(), String.t()) :: {:ok, :revoked | :not_found}
+  @spec revoke_role(id(), atom(), atom(), id()) :: {:ok, :revoked | :not_found}
   def revoke_role(user_id, role, entity_type, entity_id) do
-    Edict.Core.revoke_role(config(), user_id, role, entity_type, entity_id)
+    Edict.Core.revoke_role(config(), to_string(user_id), role, entity_type, to_string(entity_id))
   end
 
   @doc "Revokes all roles for a user on a specific entity."
-  @spec revoke_all_roles(String.t(), atom(), String.t()) :: {:ok, non_neg_integer()}
+  @spec revoke_all_roles(id(), atom(), id()) :: {:ok, non_neg_integer()}
   def revoke_all_roles(user_id, entity_type, entity_id) do
-    Edict.Core.revoke_all_roles(config(), user_id, entity_type, entity_id)
+    Edict.Core.revoke_all_roles(config(), to_string(user_id), entity_type, to_string(entity_id))
   end
 
   @doc "Revokes all roles on an entity for all users."
-  @spec revoke_entity(atom(), String.t()) :: {:ok, non_neg_integer()}
+  @spec revoke_entity(atom(), id()) :: {:ok, non_neg_integer()}
   def revoke_entity(entity_type, entity_id) do
-    Edict.Core.revoke_entity(config(), entity_type, entity_id)
+    Edict.Core.revoke_entity(config(), entity_type, to_string(entity_id))
   end
 
   @doc "Lists all role assignments for a user."
-  @spec list_roles(String.t()) :: [Edict.Schema.UserRole.t()]
+  @spec list_roles(id()) :: [Edict.Schema.UserRole.t()]
   def list_roles(user_id) do
-    Edict.Core.list_roles(config(), user_id)
+    Edict.Core.list_roles(config(), to_string(user_id))
   end
 
   @doc "Assigns a role to a user across multiple entities."
-  @spec assign_roles(String.t(), atom(), [{atom(), String.t()}]) ::
+  @spec assign_roles(id(), atom(), [{atom(), id()}]) ::
           {:ok, [Edict.Schema.UserRole.t()]} | {:error, atom()}
   def assign_roles(user_id, role, entities) do
-    Edict.Core.assign_roles(config(), user_id, role, entities)
+    Edict.Core.assign_roles(config(), to_string(user_id), role, entities)
   end
 
   # --- Permission Checks ---
@@ -74,7 +76,7 @@ defmodule Edict do
   end
 
   @doc "Check permission using entity_type and entity_id directly."
-  @spec can?(Document.t(), atom(), atom(), String.t()) :: boolean()
+  @spec can?(Document.t(), atom(), atom(), id()) :: boolean()
   def can?(document, action, entity_type, entity_id) do
     Helpers.can?(document, action, entity_type, entity_id, config_module())
   end
@@ -86,7 +88,7 @@ defmodule Edict do
 
   Returns the cached document if fresh, or rebuilds from DB if stale/missing.
   """
-  @spec load_document(String.t()) :: Document.t()
+  @spec load_document(id()) :: Document.t()
   def load_document(user_id) do
     user_id = to_string(user_id)
     cache = cache_name()

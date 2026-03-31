@@ -19,16 +19,20 @@ end
 
 defimpl Edict.Entity, for: Any do
   def entity_id(entity) do
+    module = if is_struct(entity), do: inspect(entity.__struct__), else: inspect(entity)
+
     raise Protocol.UndefinedError,
       protocol: Edict.Entity,
       value: entity,
-      description: "implement Edict.Entity for #{inspect(entity.__struct__)}"
+      description: "implement Edict.Entity for #{module}"
   end
 
   def entity_type(entity) do
+    module = if is_struct(entity), do: inspect(entity.__struct__), else: inspect(entity)
+
     raise Protocol.UndefinedError,
       protocol: Edict.Entity,
       value: entity,
-      description: "implement Edict.Entity for #{inspect(entity.__struct__)}"
+      description: "implement Edict.Entity for #{module}"
   end
 end

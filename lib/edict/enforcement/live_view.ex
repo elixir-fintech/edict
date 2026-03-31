@@ -25,14 +25,14 @@ defmodule Edict.Enforcement.LiveView do
   def on_mount(opts, params, _session, socket) do
     edict_config = opts[:edict_config] || socket.assigns[:edict_config]
     config_module = edict_config.config_module
-    user_id = config_module.user_id_from_assigns(socket.assigns)
+    user_id = config_module.user_id_from_assigns(socket.assigns) |> to_string()
     entity_type = opts.entity_type
-    entity_id = opts.entity_from.(params)
+    entity_id = opts.entity_from.(params) |> to_string()
 
     document = Helpers.load_document(edict_config, user_id)
 
-    if Helpers.can?(document, opts.action, entity_type, to_string(entity_id), config_module) do
-      roles = Document.roles_for(document, entity_type, to_string(entity_id))
+    if Helpers.can?(document, opts.action, entity_type, entity_id, config_module) do
+      roles = Document.roles_for(document, entity_type, entity_id)
 
       socket =
         socket

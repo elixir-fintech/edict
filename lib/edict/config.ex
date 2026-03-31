@@ -20,6 +20,9 @@ defmodule Edict.Config do
         end
       end
 
+  **Note:** Only one module should `use Edict.Config` per application. Multiple config modules
+  will cause duplicate protocol implementations and compilation errors.
+
   This compiles into fast lookup functions:
   - `actions_for/2` — actions for a role on an entity type
   - `valid_role?/1` — whether a role is defined

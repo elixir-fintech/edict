@@ -29,6 +29,7 @@ defmodule Edict.Cache.Store do
     case Cachex.get(cache, {:auth_doc, user_id}) do
       {:ok, nil} -> :miss
       {:ok, doc} -> {:ok, doc}
+      {:error, _} -> :miss
     end
   end
 
@@ -50,7 +51,7 @@ defmodule Edict.Cache.Store do
           val
 
         {:error, :missing} ->
-          Cachex.put(cache, key, 1, ttl: ttl())
+          {:ok, _} = Cachex.put(cache, key, 1, ttl: ttl())
           1
       end
 
@@ -63,6 +64,7 @@ defmodule Edict.Cache.Store do
     case Cachex.get(cache, {:auth_version, user_id}) do
       {:ok, nil} -> {:ok, 0}
       {:ok, version} -> {:ok, version}
+      {:error, _} -> {:ok, 0}
     end
   end
 

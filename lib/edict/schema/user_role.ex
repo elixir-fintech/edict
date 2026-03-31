@@ -29,5 +29,9 @@ defmodule Edict.Schema.UserRole do
     user_role
     |> cast(attrs, @required_fields)
     |> validate_required(@required_fields)
+    |> validate_length(:user_id, max: 255)
+    |> validate_length(:entity_type, max: 255)
+    |> validate_length(:entity_id, max: 255)
+    |> validate_length(:role, max: 255)
   end
 end
