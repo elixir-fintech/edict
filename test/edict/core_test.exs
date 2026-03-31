@@ -97,4 +97,63 @@ defmodule Edict.CoreTest do
       assert v2 > v1
     end
   end
+
+  describe "revoke_all_roles/4" do
+    test "removes all roles for a user on an entity", %{config: config} do
+      {:ok, _} = Core.assign_role(config, "user-1", :admin, :organization, "42")
+      {:ok, _} = Core.assign_role(config, "user-1", :editor, :organization, "42")
+
+      assert {:ok, 2} = Core.revoke_all_roles(config, "user-1", :organization, "42")
+      assert Edict.Test.Repo.all(UserRole) == []
+    end
+
+    test "returns zero count when nothing to revoke", %{config: config} do
+      assert {:ok, 0} = Core.revoke_all_roles(config, "user-1", :organization, "42")
+    end
+  end
+
+  describe "revoke_entity/3" do
+    test "removes all roles on an entity for all users", %{config: config} do
+      {:ok, _} = Core.assign_role(config, "user-1", :admin, :organization, "42")
+      {:ok, _} = Core.assign_role(config, "user-2", :editor, :organization, "42")
+      {:ok, _} = Core.assign_role(config, "user-1", :viewer, :project, "7")
+
+      assert {:ok, 2} = Core.revoke_entity(config, :organization, "42")
+
+      remaining = Edict.Test.Repo.all(UserRole)
+      assert length(remaining) == 1
+      assert hd(remaining).entity_type == "project"
+    end
+  end
+
+  describe "list_roles/2" do
+    test "returns all role assignments for a user", %{config: config} do
+      {:ok, _} = Core.assign_role(config, "user-1", :admin, :organization, "42")
+      {:ok, _} = Core.assign_role(config, "user-1", :editor, :project, "7")
+
+      roles = Core.list_roles(config, "user-1")
+      assert length(roles) == 2
+    end
+
+    test "returns empty list for user with no roles", %{config: config} do
+      assert Core.list_roles(config, "user-999") == []
+    end
+  end
+
+  describe "assign_roles/4" do
+    test "assigns a role to multiple entities", %{config: config} do
+      entities = [{:organization, "42"}, {:team, "10"}, {:project, "7"}]
+
+      assert {:ok, results} = Core.assign_roles(config, "user-1", :admin, entities)
+      assert length(results) == 3
+
+      db_roles = Edict.Test.Repo.all(UserRole)
+      assert length(db_roles) == 3
+    end
+
+    test "returns error if role is invalid", %{config: config} do
+      assert {:error, :invalid_role} =
+               Core.assign_roles(config, "user-1", :superadmin, [{:organization, "42"}])
+    end
+  end
 end
