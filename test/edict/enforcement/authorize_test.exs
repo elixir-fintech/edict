@@ -7,8 +7,8 @@ defmodule Edict.Enforcement.AuthorizeTest do
     # Simulate a LiveView module with handle_event/3
     use Edict.Enforcement.Authorize
 
-    authorize "delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project
-    authorize "update", action: :write, entity_from_assigns: :project_id, entity_type: :project
+    authorize("delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project)
+    authorize("update", action: :write, entity_from_assigns: :project_id, entity_type: :project)
 
     def handle_event("delete", _params, socket) do
       {:noreply, Map.update!(socket, :assigns, &Map.put(&1, :deleted, true))}

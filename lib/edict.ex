@@ -28,7 +28,8 @@ defmodule Edict do
   # --- Role Management ---
 
   @doc "Assigns a role to a user on an entity."
-  @spec assign_role(String.t(), atom(), atom(), String.t()) :: {:ok, Edict.Schema.UserRole.t()} | {:error, atom()}
+  @spec assign_role(String.t(), atom(), atom(), String.t()) ::
+          {:ok, Edict.Schema.UserRole.t()} | {:error, atom()}
   def assign_role(user_id, role, entity_type, entity_id) do
     Edict.Core.assign_role(config(), user_id, role, entity_type, entity_id)
   end
@@ -58,7 +59,8 @@ defmodule Edict do
   end
 
   @doc "Assigns a role to a user across multiple entities."
-  @spec assign_roles(String.t(), atom(), [{atom(), String.t()}]) :: {:ok, [Edict.Schema.UserRole.t()]} | {:error, atom()}
+  @spec assign_roles(String.t(), atom(), [{atom(), String.t()}]) ::
+          {:ok, [Edict.Schema.UserRole.t()]} | {:error, atom()}
   def assign_roles(user_id, role, entities) do
     Edict.Core.assign_roles(config(), user_id, role, entities)
   end
