@@ -3,3 +3,19 @@ CLAUDE.md
 agents/
 docs/
 .worktrees/
+
+# Elixir/Mix
+/_build/
+/deps/
+/cover/
+*.ez
+erl_crash.dump
+
+# Generated on crash
+*.crashdump
+
+# Test artifacts
+/tmp/
+
+# Mix lock
+mix.lock
