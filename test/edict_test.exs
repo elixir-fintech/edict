@@ -63,4 +63,26 @@ defmodule EdictTest do
       assert length(roles) == 3
     end
   end
+
+  describe "validation" do
+    test "returns error for invalid role" do
+      assert {:error, :invalid_role} =
+               Edict.assign_role("user-1", :superadmin, :organization, "42")
+    end
+
+    test "returns error for invalid entity type" do
+      assert {:error, :invalid_entity_type} =
+               Edict.assign_role("user-1", :admin, :galaxy, "42")
+    end
+
+    test "returns error for invalid role in bulk assign" do
+      assert {:error, :invalid_role} =
+               Edict.assign_roles("user-1", :superadmin, [{:organization, "42"}])
+    end
+
+    test "returns error for invalid entity type in bulk assign" do
+      assert {:error, :invalid_entity_type} =
+               Edict.assign_roles("user-1", :admin, [{:galaxy, "42"}])
+    end
+  end
 end

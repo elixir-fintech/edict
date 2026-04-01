@@ -16,51 +16,48 @@ defmodule Edict.Core do
   alias Edict.Schema.UserRole
 
   @doc "Assigns a role to a user on an entity. Idempotent — assigning the same role twice is a no-op."
-  @spec assign_role(map(), String.t(), atom(), atom(), String.t()) ::
-          {:ok, UserRole.t() | :already_assigned} | {:error, atom()}
+  @spec assign_role(map(), String.t(), String.t(), String.t(), String.t()) ::
+          {:ok, UserRole.t() | :already_assigned} | {:error, Ecto.Changeset.t()}
   def assign_role(config, user_id, role, entity_type, entity_id) do
-    with :ok <- validate_role(config, role),
-         :ok <- validate_entity_type(config, entity_type) do
-      attrs = %{
-        user_id: user_id,
-        entity_type: to_string(entity_type),
-        entity_id: entity_id,
-        role: to_string(role)
-      }
+    attrs = %{
+      user_id: user_id,
+      entity_type: entity_type,
+      entity_id: entity_id,
+      role: role
+    }
 
-      result =
-        config.repo.insert(
-          UserRole.changeset(%UserRole{}, attrs),
-          on_conflict: :nothing,
-          conflict_target: [:user_id, :entity_type, :entity_id, :role],
-          returning: true
-        )
+    result =
+      config.repo.insert(
+        UserRole.changeset(%UserRole{}, attrs),
+        on_conflict: :nothing,
+        conflict_target: [:user_id, :entity_type, :entity_id, :role],
+        returning: true
+      )
 
-      case result do
-        {:ok, %UserRole{id: nil}} ->
-          {:ok, :already_assigned}
+    case result do
+      {:ok, %UserRole{id: nil}} ->
+        {:ok, :already_assigned}
 
-        {:ok, user_role} ->
-          invalidate_cache(config, user_id)
-          {:ok, user_role}
+      {:ok, user_role} ->
+        invalidate_cache(config, user_id)
+        {:ok, user_role}
 
-        {:error, changeset} ->
-          {:error, changeset}
-      end
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 
   @doc "Revokes a specific role from a user on an entity."
-  @spec revoke_role(map(), String.t(), atom(), atom(), String.t()) ::
+  @spec revoke_role(map(), String.t(), String.t(), String.t(), String.t()) ::
           {:ok, :revoked | :not_found}
   def revoke_role(config, user_id, role, entity_type, entity_id) do
     query =
       from ur in UserRole,
         where:
           ur.user_id == ^user_id and
-            ur.entity_type == ^to_string(entity_type) and
+            ur.entity_type == ^entity_type and
             ur.entity_id == ^entity_id and
-            ur.role == ^to_string(role)
+            ur.role == ^role
 
     case config.repo.delete_all(query) do
       {0, _} ->
@@ -73,13 +70,13 @@ defmodule Edict.Core do
   end
 
   @doc "Revokes all roles for a user on a specific entity."
-  @spec revoke_all_roles(map(), String.t(), atom(), String.t()) :: {:ok, non_neg_integer()}
+  @spec revoke_all_roles(map(), String.t(), String.t(), String.t()) :: {:ok, non_neg_integer()}
   def revoke_all_roles(config, user_id, entity_type, entity_id) do
     query =
       from ur in UserRole,
         where:
           ur.user_id == ^user_id and
-            ur.entity_type == ^to_string(entity_type) and
+            ur.entity_type == ^entity_type and
             ur.entity_id == ^entity_id
 
     {count, _} = config.repo.delete_all(query)
@@ -90,16 +87,14 @@ defmodule Edict.Core do
   end
 
   @doc "Revokes all roles on an entity for all users. Use for cleanup when an entity is deleted."
-  @spec revoke_entity(map(), atom(), String.t()) :: {:ok, non_neg_integer()}
+  @spec revoke_entity(map(), String.t(), String.t()) :: {:ok, non_neg_integer()}
   def revoke_entity(config, entity_type, entity_id) do
-    entity_type_str = to_string(entity_type)
-
     {:ok, {count, affected_user_ids}} =
       config.repo.transaction(fn ->
         affected_user_ids =
           config.repo.all(
             from ur in UserRole,
-              where: ur.entity_type == ^entity_type_str and ur.entity_id == ^entity_id,
+              where: ur.entity_type == ^entity_type and ur.entity_id == ^entity_id,
               distinct: true,
               select: ur.user_id
           )
@@ -107,7 +102,7 @@ defmodule Edict.Core do
         {count, _} =
           config.repo.delete_all(
             from ur in UserRole,
-              where: ur.entity_type == ^entity_type_str and ur.entity_id == ^entity_id
+              where: ur.entity_type == ^entity_type and ur.entity_id == ^entity_id
           )
 
         {count, affected_user_ids}
@@ -127,63 +122,42 @@ defmodule Edict.Core do
     |> config.repo.all()
   end
 
-  @doc "Assigns a role to a user across multiple entities."
-  @spec assign_roles(map(), String.t(), atom(), [{atom(), String.t()}]) ::
-          {:ok, [UserRole.t()]} | {:error, atom()}
+  @doc "Assigns a role to a user across multiple entities. Expects pre-validated, string arguments."
+  @spec assign_roles(map(), String.t(), String.t(), [{String.t(), String.t()}]) ::
+          {:ok, [UserRole.t()]}
   def assign_roles(config, user_id, role, entities) do
-    with :ok <- validate_role(config, role) do
-      invalid =
-        Enum.find(entities, fn {entity_type, _} ->
-          not config.config_module.valid_entity_type?(entity_type)
-        end)
+    now = DateTime.utc_now()
 
-      if invalid do
-        {:error, :invalid_entity_type}
-      else
-        role_str = to_string(role)
-        now = DateTime.utc_now()
+    entries =
+      Enum.map(entities, fn {entity_type, entity_id} ->
+        %{
+          id: Ecto.UUID.generate(),
+          user_id: user_id,
+          entity_type: entity_type,
+          entity_id: entity_id,
+          role: role,
+          inserted_at: now
+        }
+      end)
 
-        entries =
-          Enum.map(entities, fn {entity_type, entity_id} ->
-            %{
-              id: Ecto.UUID.generate(),
-              user_id: user_id,
-              entity_type: to_string(entity_type),
-              entity_id: to_string(entity_id),
-              role: role_str,
-              inserted_at: now
-            }
-          end)
+    {_count, user_roles} =
+      config.repo.insert_all(UserRole, entries,
+        on_conflict: :nothing,
+        conflict_target: [:user_id, :entity_type, :entity_id, :role],
+        returning: true
+      )
 
-        config.repo.insert_all(UserRole, entries,
-          on_conflict: :nothing,
-          conflict_target: [:user_id, :entity_type, :entity_id, :role]
-        )
-
-        invalidate_cache(config, user_id)
-        {:ok, entries}
-      end
-    end
-  end
-
-  defp validate_role(config, role) do
-    if config.config_module.valid_role?(role), do: :ok, else: {:error, :invalid_role}
-  end
-
-  defp validate_entity_type(config, entity_type) do
-    if config.config_module.valid_entity_type?(entity_type),
-      do: :ok,
-      else: {:error, :invalid_entity_type}
+    invalidate_cache(config, user_id)
+    {:ok, user_roles}
   end
 
   defp invalidate_cache(config, user_id) do
     {:ok, new_version} = Store.bump_version(config.cache, user_id)
-    Store.delete_document(config.cache, user_id)
+    message = {:edict_version_bump, user_id, new_version}
 
-    Phoenix.PubSub.broadcast(
-      config.pubsub,
-      config.topic,
-      {:edict_version_bump, user_id, new_version}
-    )
+    # Global topic for PubSubListener (cross-node cache invalidation)
+    Phoenix.PubSub.broadcast(config.pubsub, config.topic, message)
+    # Per-user topic for LiveView hooks (targeted delivery)
+    Phoenix.PubSub.broadcast(config.pubsub, "edict:user:#{user_id}", message)
   end
 end

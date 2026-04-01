@@ -4,16 +4,12 @@ defmodule Edict.Enforcement.LiveViewTest do
   alias Edict.Cache.{Document, Store}
   alias Edict.Enforcement.LiveView, as: EdictLiveView
 
-  @cache_name :live_view_test_cache
-
   setup do
-    case Cachex.start_link(@cache_name) do
-      {:ok, _} -> :ok
-      {:error, {:already_started, _}} -> :ok
-    end
+    cache_name = :"lv_cache_#{:erlang.unique_integer([:positive])}"
+    {:ok, _} = Cachex.start_link(cache_name)
 
     edict_config = %{
-      cache: @cache_name,
+      cache: cache_name,
       config_module: Edict.Test.Config,
       repo: Edict.Test.Repo,
       pubsub: Edict.Test.PubSub,
@@ -28,8 +24,8 @@ defmodule Edict.Enforcement.LiveViewTest do
       }
     }
 
-    Store.put_document(@cache_name, "user-1", doc)
-    Store.set_version(@cache_name, "user-1", 1)
+    Store.put_document(cache_name, "user-1", doc)
+    Store.set_version(cache_name, "user-1", 1)
 
     opts = %{
       edict_config: edict_config,
@@ -39,7 +35,8 @@ defmodule Edict.Enforcement.LiveViewTest do
     }
 
     socket = %Phoenix.LiveView.Socket{
-      assigns: %{__changed__: %{}, current_user: %{id: "user-1"}}
+      assigns: %{__changed__: %{}, current_user: %{id: "user-1"}},
+      private: %{live_temp: %{}, lifecycle: %Phoenix.LiveView.Lifecycle{}}
     }
 
     params = %{"id" => "7"}
@@ -47,15 +44,14 @@ defmodule Edict.Enforcement.LiveViewTest do
     %{opts: opts, socket: socket, params: params}
   end
 
-  test "authorized user gets :cont with document and roles", %{
+  test "authorized user gets :cont with document", %{
     opts: opts,
     socket: socket,
     params: params
   } do
     {:cont, result_socket} = EdictLiveView.on_mount(opts, params, %{}, socket)
 
-    assert %Document{} = result_socket.assigns[:edict_document]
-    assert :admin in result_socket.assigns[:current_user_roles]
+    assert %Document{} = result_socket.assigns[:current_user_roles]
   end
 
   test "unauthorized user gets :halt", %{opts: opts, socket: socket, params: params} do

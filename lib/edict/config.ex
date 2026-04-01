@@ -27,6 +27,7 @@ defmodule Edict.Config do
   - `actions_for/2` — actions for a role on an entity type
   - `valid_role?/1` — whether a role is defined
   - `valid_entity_type?/1` — whether an entity type is defined
+  - `valid_action?/2` — whether an action is valid for an entity type
   - `entity_types/0` — list of valid entity types
   - `user_id_from_assigns/1` — extract user ID from conn/socket assigns
   """
@@ -143,6 +144,23 @@ defmodule Edict.Config do
         end
       end)
 
+    # Collect all valid actions per entity type
+    actions_by_entity_type =
+      role_actions
+      |> Enum.reduce(%{}, fn {_role, entity_type, actions}, acc ->
+        Map.update(acc, entity_type, MapSet.new(actions), &MapSet.union(&1, MapSet.new(actions)))
+      end)
+      |> Map.new(fn {et, actions} -> {et, MapSet.to_list(actions)} end)
+
+    valid_action_clauses =
+      Enum.flat_map(actions_by_entity_type, fn {entity_type, actions} ->
+        Enum.map(actions, fn action ->
+          quote do
+            def valid_action?(unquote(action), unquote(entity_type)), do: true
+          end
+        end)
+      end)
+
     # Generate protocol implementations
     protocol_impls =
       entities
@@ -184,19 +202,29 @@ defmodule Edict.Config do
       end
 
     quote do
+      @doc "Returns the list of valid entity types."
       def entity_types, do: unquote(entity_type_names)
 
+      @doc "Returns `true` if the given entity type is defined."
       def valid_entity_type?(type), do: type in unquote(entity_type_names)
 
+      @doc "Returns `true` if the given role is defined."
       def valid_role?(role), do: role in unquote(roles)
 
       unquote_splicing(actions_for_clauses)
 
-      # Catch-all: role has no definition for this entity type
+      @doc "Returns the actions a role grants on an entity type. Returns `[]` for undefined combinations."
       def actions_for(_role, _entity_type), do: []
 
+      unquote_splicing(valid_action_clauses)
+
+      @doc "Returns `true` if the action is valid for the given entity type."
+      def valid_action?(_action, _entity_type), do: false
+
+      @doc "Extracts the user ID from conn/socket assigns."
       def user_id_from_assigns(assigns), do: unquote(user_fn).(assigns)
 
+      @doc "Returns the configured unauthorized handler function."
       def on_unauthorized, do: unquote(unauthorized_fn)
 
       # Protocol implementations

@@ -4,13 +4,12 @@ defmodule Edict.Enforcement.PlugTest do
   alias Edict.Cache.{Document, Store}
   alias Edict.Enforcement.Plug, as: EdictPlug
 
-  @cache_name :plug_test_cache
-
   setup do
-    {:ok, _} = Cachex.start_link(@cache_name)
+    cache_name = :"plug_cache_#{:erlang.unique_integer([:positive])}"
+    {:ok, _} = Cachex.start_link(cache_name)
 
     edict_config = %{
-      cache: @cache_name,
+      cache: cache_name,
       config_module: Edict.Test.Config,
       repo: Edict.Test.Repo,
       pubsub: Edict.Test.PubSub,
@@ -25,8 +24,8 @@ defmodule Edict.Enforcement.PlugTest do
       }
     }
 
-    Store.put_document(@cache_name, "user-1", doc)
-    Store.set_version(@cache_name, "user-1", 1)
+    Store.put_document(cache_name, "user-1", doc)
+    Store.set_version(cache_name, "user-1", 1)
 
     opts =
       EdictPlug.init(
@@ -39,7 +38,7 @@ defmodule Edict.Enforcement.PlugTest do
     %{edict_config: edict_config, opts: opts}
   end
 
-  test "authorized request assigns document and roles", %{opts: opts} do
+  test "authorized request assigns document", %{opts: opts} do
     conn =
       Plug.Test.conn(:get, "/projects/7", %{})
       |> Map.put(:params, %{"id" => "7"})
@@ -48,8 +47,7 @@ defmodule Edict.Enforcement.PlugTest do
     result = EdictPlug.call(conn, opts)
 
     refute result.halted
-    assert %Document{} = result.assigns[:edict_document]
-    assert :admin in result.assigns[:current_user_roles]
+    assert %Document{} = result.assigns[:current_user_roles]
   end
 
   test "unauthorized request is halted with 403", %{opts: opts} do

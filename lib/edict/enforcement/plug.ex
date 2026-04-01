@@ -15,7 +15,6 @@ defmodule Edict.Enforcement.Plug do
 
   @behaviour Plug
 
-  alias Edict.Cache.Document
   alias Edict.Enforcement.Helpers
 
   @impl Plug
@@ -33,11 +32,7 @@ defmodule Edict.Enforcement.Plug do
     document = Helpers.load_document(edict_config, user_id)
 
     if Helpers.can?(document, opts.action, entity_type, entity_id, config_module) do
-      roles = Document.roles_for(document, entity_type, entity_id)
-
-      conn
-      |> Plug.Conn.assign(:edict_document, document)
-      |> Plug.Conn.assign(:current_user_roles, roles)
+      Plug.Conn.assign(conn, :current_user_roles, document)
     else
       unauthorized(conn, config_module)
     end

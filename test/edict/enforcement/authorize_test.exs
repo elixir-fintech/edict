@@ -48,50 +48,54 @@ defmodule Edict.Enforcement.AuthorizeTest do
   end
 
   test "admin can delete — handler runs", %{edict_config: edict_config, admin_doc: admin_doc} do
-    socket = %{
-      assigns: %{
+    socket =
+      build_socket(%{
         project_id: "7",
-        edict_document: admin_doc,
+        current_user_roles: admin_doc,
         edict_config: edict_config
-      }
-    }
+      })
 
     {:noreply, result} = TestLiveView.handle_event("delete", %{}, socket)
 
     assert result.assigns[:deleted] == true
   end
 
-  test "viewer cannot delete — handler blocked", %{
+  test "viewer cannot delete — on_unauthorized called", %{
     edict_config: edict_config,
     viewer_doc: viewer_doc
   } do
-    socket = %{
-      assigns: %{
+    socket =
+      build_socket(%{
         project_id: "7",
-        edict_document: viewer_doc,
+        current_user_roles: viewer_doc,
         edict_config: edict_config
-      }
-    }
+      })
 
     {:noreply, result} = TestLiveView.handle_event("delete", %{}, socket)
 
-    refute Map.has_key?(result.assigns, :deleted)
+    assert result.redirected
   end
 
   test "unguarded ping passes through normally", %{
     edict_config: edict_config,
     viewer_doc: viewer_doc
   } do
-    socket = %{
-      assigns: %{
+    socket =
+      build_socket(%{
         project_id: "7",
-        edict_document: viewer_doc,
+        current_user_roles: viewer_doc,
         edict_config: edict_config
-      }
-    }
+      })
 
     {:noreply, result} = TestLiveView.handle_event("ping", %{}, socket)
 
     assert result.assigns[:pinged] == true
+  end
+
+  defp build_socket(assigns) do
+    %Phoenix.LiveView.Socket{
+      assigns: Map.merge(%{__changed__: %{}}, assigns),
+      private: %{live_temp: %{}, lifecycle: %Phoenix.LiveView.Lifecycle{}}
+    }
   end
 end
