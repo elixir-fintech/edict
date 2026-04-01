@@ -84,5 +84,25 @@ defmodule EdictTest do
       assert {:error, :invalid_entity_type} =
                Edict.assign_roles("user-1", :admin, [{:galaxy, "42"}])
     end
+
+    test "returns error for invalid role on revoke" do
+      assert {:error, :invalid_role} =
+               Edict.revoke_role("user-1", :superadmin, :organization, "42")
+    end
+
+    test "returns error for invalid entity type on revoke" do
+      assert {:error, :invalid_entity_type} =
+               Edict.revoke_role("user-1", :admin, :galaxy, "42")
+    end
+
+    test "returns error for invalid entity type on revoke_all_roles" do
+      assert {:error, :invalid_entity_type} =
+               Edict.revoke_all_roles("user-1", :galaxy, "42")
+    end
+
+    test "returns error for invalid entity type on revoke_entity" do
+      assert {:error, :invalid_entity_type} =
+               Edict.revoke_entity(:galaxy, "42")
+    end
   end
 end

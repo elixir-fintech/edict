@@ -8,11 +8,12 @@ defmodule Edict.Enforcement.LiveView do
   ## Usage
 
       on_mount {Edict.Enforcement.LiveView, %{
-        edict_config: @edict_config,
         action: :read,
         entity_type: :project,
         entity_from: fn params -> params["id"] end
       }}
+
+  Config is read from app env automatically. Override with `:edict_config` if needed.
   """
 
   import Phoenix.Component, only: [assign: 3]
@@ -20,7 +21,7 @@ defmodule Edict.Enforcement.LiveView do
   alias Edict.Enforcement.Helpers
 
   def on_mount(opts, params, _session, socket) do
-    edict_config = opts[:edict_config] || socket.assigns[:edict_config]
+    edict_config = opts[:edict_config] || socket.assigns[:edict_config] || Edict.config()
     config_module = edict_config.config_module
     user_id = config_module.user_id_from_assigns(socket.assigns) |> to_string()
     entity_type = opts.entity_type

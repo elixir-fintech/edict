@@ -9,11 +9,13 @@ defmodule Edict do
 
       config :edict,
         config_module: MyApp.AuthConfig,
-        repo: MyApp.Repo
+        repo: MyApp.Repo,
+        pubsub: MyApp.PubSub
 
       # application.ex
       children = [
-        {Edict.Supervisor, pubsub: MyApp.PubSub},
+        Edict.Supervisor,
+        MyAppWeb.Endpoint
       ]
 
   ## Usage
@@ -47,32 +49,46 @@ defmodule Edict do
   end
 
   @doc "Revokes a specific role from a user on an entity."
-  @spec revoke_role(id(), atom(), atom(), id()) :: {:ok, :revoked | :not_found}
+  @spec revoke_role(id(), atom(), atom(), id()) ::
+          {:ok, :revoked | :not_found} | {:error, atom()}
   def revoke_role(user_id, role, entity_type, entity_id) do
-    Edict.Core.revoke_role(
-      config(),
-      to_string(user_id),
-      to_string(role),
-      to_string(entity_type),
-      to_string(entity_id)
-    )
+    conf = config()
+
+    with :ok <- validate(conf, role, entity_type) do
+      Edict.Core.revoke_role(
+        conf,
+        to_string(user_id),
+        to_string(role),
+        to_string(entity_type),
+        to_string(entity_id)
+      )
+    end
   end
 
   @doc "Revokes all roles for a user on a specific entity."
-  @spec revoke_all_roles(id(), atom(), id()) :: {:ok, non_neg_integer()}
+  @spec revoke_all_roles(id(), atom(), id()) ::
+          {:ok, non_neg_integer()} | {:error, atom()}
   def revoke_all_roles(user_id, entity_type, entity_id) do
-    Edict.Core.revoke_all_roles(
-      config(),
-      to_string(user_id),
-      to_string(entity_type),
-      to_string(entity_id)
-    )
+    conf = config()
+
+    with :ok <- validate_entity_type(conf, entity_type) do
+      Edict.Core.revoke_all_roles(
+        conf,
+        to_string(user_id),
+        to_string(entity_type),
+        to_string(entity_id)
+      )
+    end
   end
 
   @doc "Revokes all roles on an entity for all users."
-  @spec revoke_entity(atom(), id()) :: {:ok, non_neg_integer()}
+  @spec revoke_entity(atom(), id()) :: {:ok, non_neg_integer()} | {:error, atom()}
   def revoke_entity(entity_type, entity_id) do
-    Edict.Core.revoke_entity(config(), to_string(entity_type), to_string(entity_id))
+    conf = config()
+
+    with :ok <- validate_entity_type(conf, entity_type) do
+      Edict.Core.revoke_entity(conf, to_string(entity_type), to_string(entity_id))
+    end
   end
 
   @doc "Lists all role assignments for a user."
@@ -108,6 +124,12 @@ defmodule Edict do
     if config.config_module.valid_role?(role), do: :ok, else: {:error, :invalid_role}
   end
 
+  defp validate_entity_type(config, entity_type) do
+    if config.config_module.valid_entity_type?(entity_type),
+      do: :ok,
+      else: {:error, :invalid_entity_type}
+  end
+
   defp validate_entity_types(config, entities) do
     cm = config.config_module
     invalid? = Enum.any?(entities, fn {et, _} -> not cm.valid_entity_type?(et) end)
@@ -119,13 +141,13 @@ defmodule Edict do
   @doc "Check permission using an entity struct (via Edict.Entity protocol)."
   @spec can?(Document.t(), atom(), struct()) :: boolean()
   def can?(document, action, entity) when is_struct(entity) do
-    Helpers.can?(document, action, entity, config_module())
+    Helpers.can?(document, action, entity, config().config_module)
   end
 
   @doc "Check permission using entity_type and entity_id directly."
   @spec can?(Document.t(), atom(), atom(), id()) :: boolean()
   def can?(document, action, entity_type, entity_id) do
-    Helpers.can?(document, action, entity_type, entity_id, config_module())
+    Helpers.can?(document, action, entity_type, entity_id, config().config_module)
   end
 
   # --- Document Loading ---
@@ -174,17 +196,16 @@ defmodule Edict do
     :ok
   end
 
-  defp config do
+  @doc false
+  def config do
     %{
       repo: Application.fetch_env!(:edict, :repo),
       cache: cache_name(),
       pubsub: Application.fetch_env!(:edict, :pubsub),
       topic: Application.get_env(:edict, :topic, "edict:versions"),
-      config_module: config_module()
+      config_module: Application.fetch_env!(:edict, :config_module)
     }
   end
-
-  defp config_module, do: Application.fetch_env!(:edict, :config_module)
 
   @doc false
   def cache_name, do: Application.get_env(:edict, :cache, :edict_cache)

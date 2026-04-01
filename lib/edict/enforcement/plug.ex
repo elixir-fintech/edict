@@ -7,10 +7,10 @@ defmodule Edict.Enforcement.Plug do
 
   ## Options
 
-    * `:edict_config` — the Edict config map (or read from `conn.assigns[:edict_config]`)
     * `:action` — the action atom to check (e.g., `:read`, `:write`)
     * `:entity_type` — the entity type atom (e.g., `:project`)
     * `:entity_from` — a function `(conn -> entity_id)` to extract the entity ID from the conn
+    * `:edict_config` — (optional) override config map. Defaults to app env via `Edict.config/0`
   """
 
   @behaviour Plug
@@ -23,7 +23,7 @@ defmodule Edict.Enforcement.Plug do
 
   @impl Plug
   def call(conn, opts) do
-    edict_config = opts[:edict_config] || conn.assigns[:edict_config]
+    edict_config = opts[:edict_config] || conn.assigns[:edict_config] || Edict.config()
     config_module = edict_config.config_module
     user_id = config_module.user_id_from_assigns(conn.assigns) |> to_string()
     entity_type = opts.entity_type

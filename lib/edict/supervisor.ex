@@ -8,8 +8,6 @@ defmodule Edict.Supervisor do
 
   ## Configuration
 
-  The consuming application must set Edict config before starting the supervisor:
-
       config :edict,
         repo: MyApp.Repo,
         config_module: MyApp.AuthConfig,
@@ -20,22 +18,24 @@ defmodule Edict.Supervisor do
       children = [
         MyApp.Repo,
         {Phoenix.PubSub, name: MyApp.PubSub},
-        {Edict.Supervisor, pubsub: MyApp.PubSub},
+        Edict.Supervisor,
         MyAppWeb.Endpoint
       ]
+
+  Or override via opts: `{Edict.Supervisor, pubsub: MyApp.PubSub}`
   """
 
   use Supervisor
 
   @doc "Starts the Edict supervisor."
   @spec start_link(keyword()) :: Supervisor.on_start()
-  def start_link(opts) do
+  def start_link(opts \\ []) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
   @impl true
   def init(opts) do
-    pubsub = Keyword.fetch!(opts, :pubsub)
+    pubsub = Keyword.get(opts, :pubsub) || Application.fetch_env!(:edict, :pubsub)
     cache_name = Keyword.get(opts, :cache_name, Application.get_env(:edict, :cache, :edict_cache))
     topic = Keyword.get(opts, :topic, Application.get_env(:edict, :topic, "edict:versions"))
 

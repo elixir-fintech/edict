@@ -53,7 +53,8 @@ defmodule Edict.Enforcement.Authorize do
           def handle_event(unquote(event_name), params, socket) do
             entity_id = socket.assigns[unquote(assigns_key)]
             document = socket.assigns[:current_user_roles]
-            config_module = socket.assigns[:edict_config].config_module
+            edict_config = socket.assigns[:edict_config] || Edict.config()
+            config_module = edict_config.config_module
 
             if Edict.Enforcement.Helpers.can?(
                  document,
