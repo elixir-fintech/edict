@@ -151,5 +151,30 @@ defmodule Edict.CoreTest do
       db_roles = Edict.Test.Repo.all(UserRole)
       assert length(db_roles) == 3
     end
+
+    test "is idempotent — duplicate entities are ignored", %{config: config} do
+      entities = [{"organization", "42"}, {"team", "10"}]
+
+      assert {:ok, _} = Core.assign_roles(config, "user-1", "admin", entities)
+      assert {:ok, _} = Core.assign_roles(config, "user-1", "admin", entities)
+
+      db_roles = Edict.Test.Repo.all(UserRole)
+      assert length(db_roles) == 2
+    end
+  end
+
+  describe "revoke_entity/3 PubSub" do
+    test "broadcasts version bump for each affected user", %{config: config, pubsub: pubsub} do
+      {:ok, _} = Core.assign_role(config, "user-1", "admin", "organization", "42")
+      {:ok, _} = Core.assign_role(config, "user-2", "editor", "organization", "42")
+
+      Phoenix.PubSub.subscribe(pubsub, "edict:user:user-1")
+      Phoenix.PubSub.subscribe(pubsub, "edict:user:user-2")
+
+      Core.revoke_entity(config, "organization", "42")
+
+      assert_receive {:edict_version_bump, "user-1", _}, 1000
+      assert_receive {:edict_version_bump, "user-2", _}, 1000
+    end
   end
 end

@@ -105,4 +105,44 @@ defmodule EdictTest do
                Edict.revoke_entity(:galaxy, "42")
     end
   end
+
+  describe "can?/3 (struct)" do
+    test "returns true when user has permission via protocol" do
+      {:ok, _} = Edict.assign_role("user-1", :admin, :organization, "42")
+      doc = Edict.load_document("user-1")
+
+      org = %Edict.Test.Organization{id: 42, name: "Acme"}
+      assert Edict.can?(doc, :billing, org)
+    end
+
+    test "returns false when user lacks permission via protocol" do
+      {:ok, _} = Edict.assign_role("user-1", :viewer, :organization, "42")
+      doc = Edict.load_document("user-1")
+
+      org = %Edict.Test.Organization{id: 42, name: "Acme"}
+      refute Edict.can?(doc, :billing, org)
+    end
+  end
+
+  describe "can?/4 (type + id)" do
+    test "returns true when user has permission" do
+      {:ok, _} = Edict.assign_role("user-1", :admin, :project, "7")
+      doc = Edict.load_document("user-1")
+
+      assert Edict.can?(doc, :manage, :project, "7")
+    end
+
+    test "returns false when user lacks permission" do
+      {:ok, _} = Edict.assign_role("user-1", :viewer, :project, "7")
+      doc = Edict.load_document("user-1")
+
+      refute Edict.can?(doc, :delete, :project, "7")
+    end
+
+    test "returns false for entity with no roles" do
+      doc = Edict.load_document("user-1")
+
+      refute Edict.can?(doc, :read, :project, "999")
+    end
+  end
 end

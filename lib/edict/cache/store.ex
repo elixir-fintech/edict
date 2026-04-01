@@ -33,13 +33,6 @@ defmodule Edict.Cache.Store do
     end
   end
 
-  @doc "Deletes only the document (not the version) from the cache."
-  @spec delete_document(atom(), String.t()) :: :ok
-  def delete_document(cache, user_id) do
-    Cachex.del(cache, {:auth_doc, user_id})
-    :ok
-  end
-
   @doc "Increments and returns the new version number for a user."
   @spec bump_version(atom(), String.t()) :: {:ok, non_neg_integer()}
   def bump_version(cache, user_id) do

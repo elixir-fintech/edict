@@ -171,6 +171,8 @@ defmodule Edict do
   """
   @spec validate_config!(module()) :: :ok
   def validate_config!(config_module) do
+    Code.ensure_loaded!(config_module)
+
     required_functions = [
       {:entity_types, 0},
       {:valid_entity_type?, 1},

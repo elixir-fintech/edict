@@ -69,4 +69,33 @@ defmodule Edict.ConfigTest do
       assert is_function(Edict.Test.Config.on_unauthorized())
     end
   end
+
+  describe "valid_action?/2" do
+    test "returns true for actions defined on an entity type" do
+      assert Edict.Test.Config.valid_action?(:read, :organization)
+      assert Edict.Test.Config.valid_action?(:billing, :organization)
+      assert Edict.Test.Config.valid_action?(:manage, :project)
+    end
+
+    test "returns false for actions not defined on an entity type" do
+      refute Edict.Test.Config.valid_action?(:billing, :project)
+      refute Edict.Test.Config.valid_action?(:manage, :resource)
+    end
+
+    test "returns false for completely unknown actions" do
+      refute Edict.Test.Config.valid_action?(:fly, :organization)
+    end
+  end
+
+  describe "validate_config!/1" do
+    test "returns :ok for a valid config module" do
+      assert :ok = Edict.validate_config!(Edict.Test.Config)
+    end
+
+    test "raises for a module missing required functions" do
+      assert_raise ArgumentError, ~r/missing required functions/, fn ->
+        Edict.validate_config!(String)
+      end
+    end
+  end
 end
