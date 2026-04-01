@@ -2,7 +2,7 @@ defmodule Edict.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/your-org/edict"
+  @source_url "https://github.com/elixir-fintech/edict"
 
   def project do
     [
@@ -53,7 +53,21 @@ defmodule Edict.MixProject do
   defp docs do
     [
       main: "readme",
-      extras: ["README.md"]
+      extras: ["README.md"],
+      source_url: @source_url,
+      groups_for_modules: [
+        "Public API": [Edict],
+        Configuration: [Edict.Config, Edict.Entity],
+        Enforcement: [
+          Edict.Plug,
+          Edict.LiveView,
+          Edict.Enforcement.Plug,
+          Edict.Enforcement.LiveView,
+          Edict.Enforcement.Authorize
+        ],
+        Cache: [Edict.Cache.Document, Edict.Cache.Store, Edict.Cache.PubSubListener],
+        Testing: [Edict.TestHelpers]
+      ]
     ]
   end
 

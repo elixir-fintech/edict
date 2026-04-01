@@ -4,24 +4,48 @@ defmodule Edict do
 
   Edict maintains a per-user authorization document in an ETS-backed cache.
   Permission checks read from the cached document with sub-microsecond latency.
+  Documents are automatically invalidated when roles change, with cross-node
+  support via Phoenix.PubSub.
 
   ## Setup
 
+      # config/config.exs
       config :edict,
         config_module: MyApp.AuthConfig,
         repo: MyApp.Repo,
         pubsub: MyApp.PubSub
 
-      # application.ex
+      # lib/my_app/application.ex
       children = [
+        MyApp.Repo,
+        {Phoenix.PubSub, name: MyApp.PubSub},
         Edict.Supervisor,
         MyAppWeb.Endpoint
       ]
 
-  ## Usage
+  ## Role management
 
       Edict.assign_role(user_id, :admin, :organization, "42")
-      Edict.can?(document, :read, @project)
+      Edict.revoke_role(user_id, :admin, :organization, "42")
+      Edict.assign_roles(user_id, :editor, [{:project, "7"}, {:team, "10"}])
+
+  ## Permission checks
+
+      doc = Edict.load_document(user_id)
+      Edict.can?(doc, :read, @project)          # via Edict.Entity protocol
+      Edict.can?(doc, :read, :project, "7")      # raw type + id
+
+  In Plug and LiveView, the document is loaded automatically into
+  `assigns.current_user_roles` — use `can?/3` or `can?/4` directly in templates.
+
+  ## Key modules
+
+  - `Edict.Config` — DSL for defining entity types, roles, and actions
+  - `Edict.Plug` — controller-level authorization
+  - `Edict.LiveView` — LiveView on_mount authorization
+  - `Edict.Enforcement.Authorize` — per-event authorization macro
+  - `Edict.Entity` — protocol for extracting entity identity from structs
+  - `Edict.TestHelpers` — test helpers for granting roles and asserting permissions
   """
 
   alias Edict.Cache.Document
