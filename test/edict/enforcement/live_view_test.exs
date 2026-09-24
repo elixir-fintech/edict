@@ -61,4 +61,28 @@ defmodule Edict.Enforcement.LiveViewTest do
 
     assert result_socket.redirected
   end
+
+  test "authorized user gets :cont with keyword list opts", %{
+    opts: opts,
+    socket: socket,
+    params: params
+  } do
+    keyword_opts = Map.to_list(opts)
+
+    {:cont, result_socket} = EdictLiveView.on_mount(keyword_opts, params, %{}, socket)
+
+    assert %Document{} = result_socket.assigns[:current_user_roles]
+  end
+
+  test "unauthorized user gets :halt with keyword list opts", %{
+    opts: opts,
+    socket: socket,
+    params: params
+  } do
+    keyword_opts = opts |> Map.put(:action, :billing) |> Map.to_list()
+
+    {:halt, result_socket} = EdictLiveView.on_mount(keyword_opts, params, %{}, socket)
+
+    assert result_socket.redirected
+  end
 end

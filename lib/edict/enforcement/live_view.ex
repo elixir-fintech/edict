@@ -21,6 +21,7 @@ defmodule Edict.Enforcement.LiveView do
   alias Edict.Enforcement.Helpers
 
   def on_mount(opts, params, _session, socket) do
+    opts = Map.new(opts)
     edict_config = opts[:edict_config] || socket.assigns[:edict_config] || Edict.config()
     config_module = edict_config.config_module
     user_id = config_module.user_id_from_assigns(socket.assigns) |> to_string()
