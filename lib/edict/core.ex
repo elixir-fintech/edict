@@ -15,6 +15,12 @@ defmodule Edict.Core do
   alias Edict.Cache.Store
   alias Edict.Schema.UserRole
 
+  @insert_ignoring_duplicates [
+    on_conflict: :nothing,
+    conflict_target: [:user_id, :entity_type, :entity_id, :role],
+    returning: true
+  ]
+
   @doc "Assigns a role to a user on an entity. Idempotent — assigning the same role twice is a no-op."
   @spec assign_role(map(), String.t(), String.t(), String.t(), String.t()) ::
           {:ok, UserRole.t() | :already_assigned} | {:error, Ecto.Changeset.t()}
@@ -26,24 +32,21 @@ defmodule Edict.Core do
       role: role
     }
 
-    result =
-      config.repo.insert(
-        UserRole.changeset(%UserRole{}, attrs),
-        on_conflict: :nothing,
-        conflict_target: [:user_id, :entity_type, :entity_id, :role],
-        returning: true
-      )
+    # insert_all reports the rows actually inserted. Repo.insert can't detect
+    # the conflict: the binary_id is generated client-side, so the returned
+    # struct carries an id even when no row was written.
+    with {:ok, _user_role} <-
+           %UserRole{} |> UserRole.changeset(attrs) |> Ecto.Changeset.apply_action(:insert) do
+      entry = Map.merge(attrs, %{id: Ecto.UUID.generate(), inserted_at: DateTime.utc_now()})
 
-    case result do
-      {:ok, %UserRole{id: nil}} ->
-        {:ok, :already_assigned}
+      case config.repo.insert_all(UserRole, [entry], @insert_ignoring_duplicates) do
+        {0, []} ->
+          {:ok, :already_assigned}
 
-      {:ok, user_role} ->
-        invalidate_cache(config, user_id)
-        {:ok, user_role}
-
-      {:error, changeset} ->
-        {:error, changeset}
+        {1, [user_role]} ->
+          invalidate_cache(config, user_id)
+          {:ok, user_role}
+      end
     end
   end
 
@@ -140,12 +143,7 @@ defmodule Edict.Core do
         }
       end)
 
-    {_count, user_roles} =
-      config.repo.insert_all(UserRole, entries,
-        on_conflict: :nothing,
-        conflict_target: [:user_id, :entity_type, :entity_id, :role],
-        returning: true
-      )
+    {_count, user_roles} = config.repo.insert_all(UserRole, entries, @insert_ignoring_duplicates)
 
     invalidate_cache(config, user_id)
     {:ok, user_roles}

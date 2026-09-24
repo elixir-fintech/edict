@@ -47,6 +47,22 @@ defmodule Edict.CoreTest do
       assert length(roles) == 1
     end
 
+    test "returns :already_assigned when the role exists", %{config: config} do
+      {:ok, _} = Core.assign_role(config, "user-1", "admin", "organization", "42")
+
+      assert {:ok, :already_assigned} =
+               Core.assign_role(config, "user-1", "admin", "organization", "42")
+    end
+
+    test "does not bump the version when the role exists", %{config: config, cache: cache} do
+      {:ok, _} = Core.assign_role(config, "user-1", "admin", "organization", "42")
+      {:ok, version_before} = Store.get_version(cache, "user-1")
+
+      {:ok, _} = Core.assign_role(config, "user-1", "admin", "organization", "42")
+
+      assert {:ok, version_before} == Store.get_version(cache, "user-1")
+    end
+
     test "bumps the cache version", %{config: config, cache: cache} do
       Core.assign_role(config, "user-1", "admin", "organization", "42")
 
