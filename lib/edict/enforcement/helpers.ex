@@ -30,9 +30,12 @@ defmodule Edict.Enforcement.Helpers do
     end
   end
 
+  # Read the version before the roles: a role change landing in between then
+  # leaves this document tagged with the older version, so the next load
+  # rebuilds instead of serving stale roles as current.
   defp rebuild_document(config, user_id) do
-    role_rows = Edict.Core.list_roles(config, user_id)
     {:ok, version} = Store.get_version(config.cache, user_id)
+    role_rows = Edict.Core.list_roles(config, user_id)
     doc = Document.new(user_id, role_rows, version)
     Store.put_document(config.cache, user_id, doc)
     doc

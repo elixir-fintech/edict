@@ -146,6 +146,26 @@ roles = Edict.list_roles(user_id)
 
 All write functions validate roles and entity types against the config module.
 
+### Atomic role changes
+
+Write functions invalidate the cache as soon as they run, so they raise `ArgumentError`
+inside a transaction: the invalidation would happen before the commit, letting other
+processes cache the old roles under the new version. To change roles together with
+other writes, use `Edict.Multi`:
+
+```elixir
+Ecto.Multi.new()
+|> Ecto.Multi.insert(:org, Organization.changeset(%Organization{}, attrs))
+|> Edict.Multi.assign_role(:admin, fn %{org: org} -> {user.id, :admin, org} end)
+|> Edict.Multi.transaction()
+```
+
+Steps take a `{user_id, role, entity}` tuple, or a function of the changes so far that
+returns one; the entity struct's type and ID come from `Edict.Entity`. `Edict.Multi.transaction/1`
+invalidates affected users only after the commit. Edict steps fail with `:not_run_by_edict`
+under a plain `Repo.transaction/1`, and `Edict.Multi.transaction/1` raises inside another
+transaction.
+
 ## Checking permissions
 
 ### In controllers (Plug)
@@ -156,7 +176,7 @@ pipeline :require_project_read do
   plug Edict.Plug,
     action: :read,
     entity_type: :project,
-    entity_from: &(&1.params["project_id"])
+    param: "project_id"
 end
 
 scope "/projects/:project_id" do
@@ -167,6 +187,10 @@ end
 
 On success, the authorization document is stored in `conn.assigns.current_user_roles`.
 
+`param:` names the request param holding the entity ID. When the ID needs custom extraction,
+pass `entity_from:` instead. Plug and `on_mount` options are stored at compile time, so it must
+be a remote capture such as `&MyAppWeb.ProjectIds.from_conn/1`; anonymous functions do not compile.
+
 ### In LiveView (on_mount)
 
 ```elixir
@@ -176,7 +200,7 @@ defmodule MyAppWeb.ProjectLive.Show do
   on_mount {Edict.LiveView,
     action: :read,
     entity_type: :project,
-    entity_from: &(&1["project_id"])}
+    param: "project_id"}
 
   # ...
 end
@@ -194,7 +218,7 @@ defmodule MyAppWeb.ProjectLive.Show do
   on_mount {Edict.LiveView,
     action: :read,
     entity_type: :project,
-    entity_from: &(&1["project_id"])}
+    param: "project_id"}
 
   authorize "delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project
   authorize "update", action: :write, entity_from_assigns: :project_id, entity_type: :project
@@ -222,14 +246,14 @@ end
 
 ## How caching works
 
-Each user has a cached authorization document containing their roles grouped by entity. The document is stored in Cachex (ETS-backed) with a version number.
+Each user has a cached authorization document containing their roles grouped by entity. The document is stored in Cachex (ETS-backed) with a version: a unique reference that each role change replaces, so a version is never reused.
 
 **On role change:**
 
 1. DB write
 2. Version bump in local Cachex
 3. PubSub broadcast to all nodes (global topic) and the user's LiveViews (per-user topic)
-4. Other nodes bump their local version via `PubSubListener`
+4. Other nodes copy the new version via `PubSubListener`
 
 **On permission check:**
 

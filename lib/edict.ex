@@ -59,7 +59,7 @@ defmodule Edict do
   @spec assign_role(id(), atom(), atom(), id()) ::
           {:ok, Edict.Schema.UserRole.t() | :already_assigned} | {:error, atom()}
   def assign_role(user_id, role, entity_type, entity_id) do
-    conf = config()
+    conf = write_config!()
 
     with :ok <- validate(conf, role, entity_type) do
       Edict.Core.assign_role(
@@ -76,7 +76,7 @@ defmodule Edict do
   @spec revoke_role(id(), atom(), atom(), id()) ::
           {:ok, :revoked | :not_found} | {:error, atom()}
   def revoke_role(user_id, role, entity_type, entity_id) do
-    conf = config()
+    conf = write_config!()
 
     with :ok <- validate(conf, role, entity_type) do
       Edict.Core.revoke_role(
@@ -93,7 +93,7 @@ defmodule Edict do
   @spec revoke_all_roles(id(), atom(), id()) ::
           {:ok, non_neg_integer()} | {:error, atom()}
   def revoke_all_roles(user_id, entity_type, entity_id) do
-    conf = config()
+    conf = write_config!()
 
     with :ok <- validate_entity_type(conf, entity_type) do
       Edict.Core.revoke_all_roles(
@@ -108,7 +108,7 @@ defmodule Edict do
   @doc "Revokes all roles on an entity for all users."
   @spec revoke_entity(atom(), id()) :: {:ok, non_neg_integer()} | {:error, atom()}
   def revoke_entity(entity_type, entity_id) do
-    conf = config()
+    conf = write_config!()
 
     with :ok <- validate_entity_type(conf, entity_type) do
       Edict.Core.revoke_entity(conf, to_string(entity_type), to_string(entity_id))
@@ -125,7 +125,7 @@ defmodule Edict do
   @spec assign_roles(id(), atom(), [{atom(), id()}]) ::
           {:ok, [Edict.Schema.UserRole.t()]} | {:error, atom()}
   def assign_roles(user_id, role, entities) do
-    conf = config()
+    conf = write_config!()
 
     with :ok <- validate_role(conf, role),
          :ok <- validate_entity_types(conf, entities) do
@@ -134,7 +134,22 @@ defmodule Edict do
     end
   end
 
-  defp validate(config, role, entity_type) do
+  # Role writes invalidate the cache as soon as they run. Inside a transaction
+  # that would happen before the commit, so atomic changes go through Edict.Multi.
+  defp write_config! do
+    conf = config()
+
+    if conf.repo.in_transaction?() do
+      raise ArgumentError,
+            "Edict role writes cannot run inside a transaction. " <>
+              "Use Edict.Multi to change roles atomically."
+    end
+
+    conf
+  end
+
+  @doc false
+  def validate(config, role, entity_type) do
     cm = config.config_module
 
     cond do

@@ -1,5 +1,6 @@
 AGENTS.md
 CLAUDE.md
+.claude
 agents/
 docs/
 .worktrees/
@@ -19,3 +20,6 @@ erl_crash.dump
 
 # Mix lock
 mix.lock
+
+#doc folder
+/doc

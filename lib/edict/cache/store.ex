@@ -1,9 +1,13 @@
 defmodule Edict.Cache.Store do
   @moduledoc """
-  Cachex wrapper for storing authorization documents and version numbers.
+  Cachex wrapper for storing authorization documents and versions.
 
   Documents are stored under `{:auth_doc, user_id}`.
   Versions are stored under `{:auth_version, user_id}`.
+
+  A version is a unique reference, compared only for equality. Each bump
+  sets a fresh one, so a version is never reused: not after its key
+  expires, and not across nodes. `0` means no version is set.
 
   TTL is configurable via application config:
 
@@ -11,6 +15,8 @@ defmodule Edict.Cache.Store do
 
   Default: 10 minutes.
   """
+
+  @type version :: reference() | 0
 
   @default_ttl :timer.minutes(10)
 
@@ -33,26 +39,16 @@ defmodule Edict.Cache.Store do
     end
   end
 
-  @doc "Increments and returns the new version number for a user."
-  @spec bump_version(atom(), String.t()) :: {:ok, non_neg_integer()}
+  @doc "Sets and returns a new, never reused version for a user."
+  @spec bump_version(atom(), String.t()) :: {:ok, version()}
   def bump_version(cache, user_id) do
-    key = {:auth_version, user_id}
-
-    new_version =
-      case Cachex.incr(cache, key, 1) do
-        {:ok, val} ->
-          val
-
-        {:error, :missing} ->
-          {:ok, _} = Cachex.put(cache, key, 1, ttl: ttl())
-          1
-      end
-
-    {:ok, new_version}
+    version = make_ref()
+    :ok = set_version(cache, user_id, version)
+    {:ok, version}
   end
 
-  @doc "Returns the current version number for a user."
-  @spec get_version(atom(), String.t()) :: {:ok, non_neg_integer()}
+  @doc "Returns the current version for a user, or `0` if none is set."
+  @spec get_version(atom(), String.t()) :: {:ok, version()}
   def get_version(cache, user_id) do
     case Cachex.get(cache, {:auth_version, user_id}) do
       {:ok, nil} -> {:ok, 0}
@@ -61,8 +57,8 @@ defmodule Edict.Cache.Store do
     end
   end
 
-  @doc "Sets a specific version number for a user."
-  @spec set_version(atom(), String.t(), non_neg_integer()) :: :ok
+  @doc "Sets a specific version for a user."
+  @spec set_version(atom(), String.t(), version()) :: :ok
   def set_version(cache, user_id, version) do
     Cachex.put(cache, {:auth_version, user_id}, version, ttl: ttl())
     :ok

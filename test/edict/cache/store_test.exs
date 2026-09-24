@@ -24,15 +24,16 @@ defmodule Edict.Cache.StoreTest do
   end
 
   describe "get_version/2 and bump_version/2" do
-    test "bump_version increments and returns new version", %{cache: cache} do
-      assert {:ok, 1} = Store.bump_version(cache, "user-1")
-      assert {:ok, 2} = Store.bump_version(cache, "user-1")
-      assert {:ok, 3} = Store.bump_version(cache, "user-1")
+    test "bump_version returns a different version each time", %{cache: cache} do
+      {:ok, v1} = Store.bump_version(cache, "user-1")
+      {:ok, v2} = Store.bump_version(cache, "user-1")
+
+      assert v1 != v2
     end
 
     test "get_version returns current version", %{cache: cache} do
-      {:ok, 1} = Store.bump_version(cache, "user-1")
-      assert {:ok, 1} = Store.get_version(cache, "user-1")
+      {:ok, version} = Store.bump_version(cache, "user-1")
+      assert {:ok, ^version} = Store.get_version(cache, "user-1")
     end
 
     test "get_version returns 0 for unknown user", %{cache: cache} do

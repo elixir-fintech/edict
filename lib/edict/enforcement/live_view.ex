@@ -7,13 +7,22 @@ defmodule Edict.Enforcement.LiveView do
 
   ## Usage
 
-      on_mount {Edict.Enforcement.LiveView, %{
+      on_mount {Edict.Enforcement.LiveView,
         action: :read,
         entity_type: :project,
-        entity_from: fn params -> params["id"] end
-      }}
+        param: "id"}
 
-  Config is read from app env automatically. Override with `:edict_config` if needed.
+  ## Options
+
+    * `:action` — the action atom to check (e.g., `:read`, `:write`)
+    * `:entity_type` — the entity type atom (e.g., `:project`)
+    * `:param` — the name of the route param holding the entity ID (e.g., `"id"`)
+    * `:entity_from` — used when `:param` is not given: a function `(params -> entity_id)`.
+      Must be a remote capture (`&MyModule.fun/1`), since `on_mount` options are
+      stored at compile time and anonymous functions cannot be
+    * `:edict_config` — (optional) override config map. Defaults to app env via `Edict.config/0`
+
+  A missing param yields no entity ID, so the check fails and the user is unauthorized.
   """
 
   import Phoenix.Component, only: [assign: 3]
@@ -21,11 +30,12 @@ defmodule Edict.Enforcement.LiveView do
   alias Edict.Enforcement.Helpers
 
   def on_mount(opts, params, _session, socket) do
+    opts = Map.new(opts)
     edict_config = opts[:edict_config] || socket.assigns[:edict_config] || Edict.config()
     config_module = edict_config.config_module
     user_id = config_module.user_id_from_assigns(socket.assigns) |> to_string()
     entity_type = opts.entity_type
-    entity_id = opts.entity_from.(params) |> to_string()
+    entity_id = opts |> entity_id(params) |> to_string()
 
     document = Helpers.load_document(edict_config, user_id)
 
@@ -42,6 +52,9 @@ defmodule Edict.Enforcement.LiveView do
       {:halt, socket}
     end
   end
+
+  defp entity_id(%{param: param}, params), do: params[param]
+  defp entity_id(%{entity_from: entity_from}, params), do: entity_from.(params)
 
   defp maybe_subscribe(socket, edict_config, user_id) do
     if Phoenix.LiveView.connected?(socket) do

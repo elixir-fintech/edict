@@ -268,4 +268,83 @@ defmodule Edict.IntegrationTest do
       assert :admin in roles
     end
   end
+
+  # A version only marks a document fresh when it equals the current version,
+  # so a version value must never be reused while a document carrying it is
+  # still cached.
+  describe "version reuse" do
+    test "a role change after the version key expires does not revive a cached document",
+         %{config: config, cache: cache} do
+      {:ok, _} = Edict.Core.assign_role(config, "user-1", "admin", "project", "7")
+      Helpers.load_document(config, "user-1")
+
+      # Simulate TTL expiry of the version key while the document stays cached
+      Cachex.del(cache, {:auth_version, "user-1"})
+      {:ok, :revoked} = Edict.Core.revoke_role(config, "user-1", "admin", "project", "7")
+
+      doc = Helpers.load_document(config, "user-1")
+
+      assert [] == Document.roles_for(doc, :project, "7")
+    end
+
+    test "role changes on two nodes do not reuse a version on a third node",
+         %{config: config, cache: cache, pubsub: pubsub} do
+      node_a_cache = :"node_a_#{:erlang.unique_integer([:positive])}"
+      node_b_cache = :"node_b_#{:erlang.unique_integer([:positive])}"
+      {:ok, _} = Cachex.start_link(node_a_cache)
+      {:ok, _} = Cachex.start_link(node_b_cache)
+      node_a = %{config | cache: node_a_cache}
+      node_b = %{config | cache: node_b_cache}
+
+      listener =
+        start_supervised!(
+          {PubSubListener,
+           cache: cache,
+           pubsub: pubsub,
+           topic: "edict:versions",
+           name: :"listener_#{:erlang.unique_integer([:positive])}"}
+        )
+
+      {:ok, _} = Edict.Core.assign_role(node_b, "user-1", "admin", "project", "7")
+      :sys.get_state(listener)
+      Helpers.load_document(config, "user-1")
+
+      {:ok, _} = Edict.Core.assign_role(node_a, "user-1", "editor", "project", "7")
+      :sys.get_state(listener)
+      doc = Helpers.load_document(config, "user-1")
+
+      assert [:admin, :editor] == doc |> Document.roles_for(:project, "7") |> Enum.sort()
+    end
+  end
+
+  # A role change can commit between the rebuild's role query and its version
+  # read. Ecto emits the query telemetry event in the calling process right
+  # after the query runs, so a one-shot handler performs the concurrent role
+  # change at exactly that point.
+  describe "rebuild racing a role change" do
+    test "roles read before a concurrent role change are not tagged with the newer version",
+         %{config: config, cache: cache} do
+      insert_role!("user-1", "admin", "project", "7")
+      Store.set_version(cache, "user-1", 1)
+      handler_id = "concurrent-role-change"
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      :telemetry.attach(
+        handler_id,
+        [:edict, :test, :repo, :query],
+        fn _event, _measurements, _metadata, _handler_config ->
+          :telemetry.detach(handler_id)
+          insert_role!("user-1", "editor", "project", "7")
+          Store.bump_version(cache, "user-1")
+        end,
+        nil
+      )
+
+      Helpers.load_document(config, "user-1")
+      doc = Helpers.load_document(config, "user-1")
+
+      assert 2 == length(Edict.Core.list_roles(config, "user-1"))
+      assert [:admin, :editor] == doc |> Document.roles_for(:project, "7") |> Enum.sort()
+    end
+  end
 end
