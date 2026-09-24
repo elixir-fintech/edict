@@ -226,14 +226,14 @@ end
 
 ## How caching works
 
-Each user has a cached authorization document containing their roles grouped by entity. The document is stored in Cachex (ETS-backed) with a version number.
+Each user has a cached authorization document containing their roles grouped by entity. The document is stored in Cachex (ETS-backed) with a version: a unique reference that each role change replaces, so a version is never reused.
 
 **On role change:**
 
 1. DB write
 2. Version bump in local Cachex
 3. PubSub broadcast to all nodes (global topic) and the user's LiveViews (per-user topic)
-4. Other nodes bump their local version via `PubSubListener`
+4. Other nodes copy the new version via `PubSubListener`
 
 **On permission check:**
 

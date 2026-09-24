@@ -11,7 +11,7 @@ defmodule Edict.Cache.Document do
 
   @type t :: %__MODULE__{
           user_id: String.t(),
-          version: non_neg_integer(),
+          version: Edict.Cache.Store.version(),
           roles: %{{atom(), String.t()} => [atom()]}
         }
 
@@ -20,7 +20,7 @@ defmodule Edict.Cache.Document do
 
   Each map must have `:entity_type`, `:entity_id`, and `:role` keys (strings).
   """
-  @spec new(String.t(), [map()], non_neg_integer()) :: t()
+  @spec new(String.t(), [map()], Edict.Cache.Store.version()) :: t()
   def new(user_id, role_rows, version) do
     roles =
       role_rows

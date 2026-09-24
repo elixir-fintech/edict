@@ -51,7 +51,7 @@ defmodule Edict.CoreTest do
       Core.assign_role(config, "user-1", "admin", "organization", "42")
 
       assert {:ok, version} = Store.get_version(cache, "user-1")
-      assert version > 0
+      assert version != 0
     end
 
     test "broadcasts version bump via PubSub on global topic", %{config: config, pubsub: pubsub} do
@@ -95,7 +95,7 @@ defmodule Edict.CoreTest do
       Core.revoke_role(config, "user-1", "admin", "organization", "42")
       {:ok, v2} = Store.get_version(cache, "user-1")
 
-      assert v2 > v1
+      assert v2 != v1
     end
   end
 
