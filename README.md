@@ -146,6 +146,26 @@ roles = Edict.list_roles(user_id)
 
 All write functions validate roles and entity types against the config module.
 
+### Atomic role changes
+
+Write functions invalidate the cache as soon as they run, so they raise `ArgumentError`
+inside a transaction: the invalidation would happen before the commit, letting other
+processes cache the old roles under the new version. To change roles together with
+other writes, use `Edict.Multi`:
+
+```elixir
+Ecto.Multi.new()
+|> Ecto.Multi.insert(:org, Organization.changeset(%Organization{}, attrs))
+|> Edict.Multi.assign_role(:admin, fn %{org: org} -> {user.id, :admin, org} end)
+|> Edict.Multi.transaction()
+```
+
+Steps take a `{user_id, role, entity}` tuple, or a function of the changes so far that
+returns one; the entity struct's type and ID come from `Edict.Entity`. `Edict.Multi.transaction/1`
+invalidates affected users only after the commit. Edict steps fail with `:not_run_by_edict`
+under a plain `Repo.transaction/1`, and `Edict.Multi.transaction/1` raises inside another
+transaction.
+
 ## Checking permissions
 
 ### In controllers (Plug)

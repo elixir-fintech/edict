@@ -145,4 +145,48 @@ defmodule EdictTest do
       refute Edict.can?(doc, :read, :project, "999")
     end
   end
+
+  # Role writes inside a transaction would invalidate the cache before the
+  # commit, so they must go through Edict.Multi instead.
+  describe "inside a transaction" do
+    test "assign_role raises ArgumentError" do
+      assert_raise ArgumentError, fn ->
+        Edict.Test.Repo.transaction(fn ->
+          Edict.assign_role("user-1", :admin, :project, "7")
+        end)
+      end
+    end
+
+    test "assign_roles raises ArgumentError" do
+      assert_raise ArgumentError, fn ->
+        Edict.Test.Repo.transaction(fn ->
+          Edict.assign_roles("user-1", :admin, [{:project, "7"}])
+        end)
+      end
+    end
+
+    test "revoke_role raises ArgumentError" do
+      assert_raise ArgumentError, fn ->
+        Edict.Test.Repo.transaction(fn ->
+          Edict.revoke_role("user-1", :admin, :project, "7")
+        end)
+      end
+    end
+
+    test "revoke_all_roles raises ArgumentError" do
+      assert_raise ArgumentError, fn ->
+        Edict.Test.Repo.transaction(fn ->
+          Edict.revoke_all_roles("user-1", :project, "7")
+        end)
+      end
+    end
+
+    test "revoke_entity raises ArgumentError" do
+      assert_raise ArgumentError, fn ->
+        Edict.Test.Repo.transaction(fn ->
+          Edict.revoke_entity(:project, "7")
+        end)
+      end
+    end
+  end
 end
