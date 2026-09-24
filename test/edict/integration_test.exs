@@ -268,4 +268,35 @@ defmodule Edict.IntegrationTest do
       assert :admin in roles
     end
   end
+
+  # A role change can commit between the rebuild's role query and its version
+  # read. Ecto emits the query telemetry event in the calling process right
+  # after the query runs, so a one-shot handler performs the concurrent role
+  # change at exactly that point.
+  describe "rebuild racing a role change" do
+    test "roles read before a concurrent role change are not tagged with the newer version",
+         %{config: config, cache: cache} do
+      insert_role!("user-1", "admin", "project", "7")
+      Store.set_version(cache, "user-1", 1)
+      handler_id = "concurrent-role-change"
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      :telemetry.attach(
+        handler_id,
+        [:edict, :test, :repo, :query],
+        fn _event, _measurements, _metadata, _handler_config ->
+          :telemetry.detach(handler_id)
+          insert_role!("user-1", "editor", "project", "7")
+          Store.bump_version(cache, "user-1")
+        end,
+        nil
+      )
+
+      Helpers.load_document(config, "user-1")
+      doc = Helpers.load_document(config, "user-1")
+
+      assert 2 == length(Edict.Core.list_roles(config, "user-1"))
+      assert [:admin, :editor] == doc |> Document.roles_for(:project, "7") |> Enum.sort()
+    end
+  end
 end
