@@ -156,7 +156,7 @@ pipeline :require_project_read do
   plug Edict.Plug,
     action: :read,
     entity_type: :project,
-    entity_from: &(&1.params["project_id"])
+    param: "project_id"
 end
 
 scope "/projects/:project_id" do
@@ -167,6 +167,10 @@ end
 
 On success, the authorization document is stored in `conn.assigns.current_user_roles`.
 
+`param:` names the request param holding the entity ID. When the ID needs custom extraction,
+pass `entity_from:` instead. Plug and `on_mount` options are stored at compile time, so it must
+be a remote capture such as `&MyAppWeb.ProjectIds.from_conn/1`; anonymous functions do not compile.
+
 ### In LiveView (on_mount)
 
 ```elixir
@@ -176,7 +180,7 @@ defmodule MyAppWeb.ProjectLive.Show do
   on_mount {Edict.LiveView,
     action: :read,
     entity_type: :project,
-    entity_from: &(&1["project_id"])}
+    param: "project_id"}
 
   # ...
 end
@@ -194,7 +198,7 @@ defmodule MyAppWeb.ProjectLive.Show do
   on_mount {Edict.LiveView,
     action: :read,
     entity_type: :project,
-    entity_from: &(&1["project_id"])}
+    param: "project_id"}
 
   authorize "delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project
   authorize "update", action: :write, entity_from_assigns: :project_id, entity_type: :project

@@ -7,7 +7,7 @@ defmodule Edict.LiveView do
       on_mount {Edict.LiveView,
         action: :read,
         entity_type: :project,
-        entity_from: &(&1["project_id"])}
+        param: "project_id"}
   """
 
   defdelegate on_mount(opts, params, session, socket), to: Edict.Enforcement.LiveView

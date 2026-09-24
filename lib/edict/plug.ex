@@ -7,7 +7,7 @@ defmodule Edict.Plug do
       plug Edict.Plug,
         action: :manage,
         entity_type: :project,
-        entity_from: &(&1.params["project_id"])
+        param: "project_id"
   """
 
   defdelegate init(opts), to: Edict.Enforcement.Plug

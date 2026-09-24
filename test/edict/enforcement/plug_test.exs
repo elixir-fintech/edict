@@ -63,4 +63,34 @@ defmodule Edict.Enforcement.PlugTest do
     assert result.halted
     assert result.status == 403
   end
+
+  test "pipeline with param option assigns document for authorized request", %{
+    edict_config: edict_config
+  } do
+    conn =
+      Plug.Test.conn(:get, "/projects/7", %{})
+      |> Map.put(:params, %{"project_id" => "7"})
+      |> Plug.Conn.assign(:current_user, %{id: "user-1"})
+      |> Plug.Conn.assign(:edict_config, edict_config)
+
+    result = Edict.Test.ReadProjectPipeline.call(conn, [])
+
+    refute result.halted
+    assert %Document{} = result.assigns[:current_user_roles]
+  end
+
+  test "pipeline with param option halts unauthorized request with 403", %{
+    edict_config: edict_config
+  } do
+    conn =
+      Plug.Test.conn(:get, "/projects/7", %{})
+      |> Map.put(:params, %{"project_id" => "7"})
+      |> Plug.Conn.assign(:current_user, %{id: "user-1"})
+      |> Plug.Conn.assign(:edict_config, edict_config)
+
+    result = Edict.Test.BillingProjectPipeline.call(conn, [])
+
+    assert result.halted
+    assert result.status == 403
+  end
 end

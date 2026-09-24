@@ -9,8 +9,13 @@ defmodule Edict.Enforcement.Plug do
 
     * `:action` — the action atom to check (e.g., `:read`, `:write`)
     * `:entity_type` — the entity type atom (e.g., `:project`)
-    * `:entity_from` — a function `(conn -> entity_id)` to extract the entity ID from the conn
+    * `:param` — the name of the request param holding the entity ID (e.g., `"project_id"`)
+    * `:entity_from` — used when `:param` is not given: a function `(conn -> entity_id)`.
+      Must be a remote capture (`&MyModule.fun/1`), since plug options are stored
+      at compile time and anonymous functions cannot be
     * `:edict_config` — (optional) override config map. Defaults to app env via `Edict.config/0`
+
+  A missing param yields no entity ID, so the check fails and the request is unauthorized.
   """
 
   @behaviour Plug
@@ -27,7 +32,7 @@ defmodule Edict.Enforcement.Plug do
     config_module = edict_config.config_module
     user_id = config_module.user_id_from_assigns(conn.assigns) |> to_string()
     entity_type = opts.entity_type
-    entity_id = opts.entity_from.(conn) |> to_string()
+    entity_id = opts |> entity_id(conn) |> to_string()
 
     document = Helpers.load_document(edict_config, user_id)
 
@@ -37,6 +42,9 @@ defmodule Edict.Enforcement.Plug do
       unauthorized(conn, config_module)
     end
   end
+
+  defp entity_id(%{param: param}, conn), do: conn.params[param]
+  defp entity_id(%{entity_from: entity_from}, conn), do: entity_from.(conn)
 
   defp unauthorized(conn, config_module) do
     config_module.on_unauthorized().(conn, %{})

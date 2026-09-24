@@ -85,4 +85,32 @@ defmodule Edict.Enforcement.LiveViewTest do
 
     assert result_socket.redirected
   end
+
+  test "authorized user gets :cont with param option", %{
+    opts: opts,
+    socket: socket,
+    params: params
+  } do
+    param_opts = opts |> Map.delete(:entity_from) |> Map.put(:param, "id")
+
+    {:cont, result_socket} = EdictLiveView.on_mount(param_opts, params, %{}, socket)
+
+    assert %Document{} = result_socket.assigns[:current_user_roles]
+  end
+
+  test "unauthorized user gets :halt with param option", %{
+    opts: opts,
+    socket: socket,
+    params: params
+  } do
+    param_opts =
+      opts
+      |> Map.delete(:entity_from)
+      |> Map.put(:param, "id")
+      |> Map.put(:action, :billing)
+
+    {:halt, result_socket} = EdictLiveView.on_mount(param_opts, params, %{}, socket)
+
+    assert result_socket.redirected
+  end
 end
