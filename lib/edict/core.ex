@@ -100,28 +100,18 @@ defmodule Edict.Core do
   @doc "Revokes all roles on an entity for all users. Use for cleanup when an entity is deleted."
   @spec revoke_entity(map(), String.t(), String.t()) :: {:ok, non_neg_integer()}
   def revoke_entity(config, entity_type, entity_id) do
-    {:ok, {count, affected_user_ids}} =
-      config.repo.transaction(fn ->
-        affected_user_ids =
-          config.repo.all(
-            from ur in UserRole,
-              where: ur.entity_type == ^entity_type and ur.entity_id == ^entity_id,
-              distinct: true,
-              select: ur.user_id
-          )
+    # One DELETE ... RETURNING: invalidations come from the rows actually
+    # deleted, including any assigned while the revocation was running.
+    {count, user_ids} =
+      config.repo.delete_all(
+        from ur in UserRole,
+          where: ur.entity_type == ^entity_type and ur.entity_id == ^entity_id,
+          select: ur.user_id
+      )
 
-        {count, _} =
-          config.repo.delete_all(
-            from ur in UserRole,
-              where: ur.entity_type == ^entity_type and ur.entity_id == ^entity_id
-          )
-
-        {count, affected_user_ids}
-      end)
-
-    Enum.each(affected_user_ids, fn uid ->
-      invalidate(config, uid)
-    end)
+    user_ids
+    |> Enum.uniq()
+    |> Enum.each(&invalidate(config, &1))
 
     {:ok, count}
   end

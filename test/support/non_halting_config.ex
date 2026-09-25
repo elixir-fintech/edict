@@ -1,6 +1,6 @@
 defmodule Edict.Test.NonHaltingConfig do
-  # A denial callback that sends a response but forgets to halt,
-  # like a redirect built with Phoenix.Controller.redirect/2
+  # Denial callbacks that forget to enforce: the Plug one sends a response
+  # without halting, the LiveView one returns the socket without redirecting
   use Edict.Config
 
   user_from_assigns(fn assigns -> assigns.current_user.id end)
@@ -10,7 +10,7 @@ defmodule Edict.Test.NonHaltingConfig do
       Plug.Conn.send_resp(conn, 403, "Forbidden")
 
     %Phoenix.LiveView.Socket{} = socket, _context ->
-      Phoenix.LiveView.redirect(socket, to: "/unauthorized")
+      socket
   end)
 
   entity_types do

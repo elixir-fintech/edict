@@ -81,6 +81,51 @@ defmodule Edict.IntegrationTest do
       assert :admin in roles
       assert :editor in roles
     end
+
+    test "halts with a redirect when the mounted permission is revoked", %{
+      config: config,
+      cache: cache
+    } do
+      insert_role!("user-1", "admin", "project", "7")
+      socket = build_socket(%{current_user: %{id: "user-1"}})
+      opts = %{edict_config: config, action: :read, entity_type: :project, param: "id"}
+      {:cont, mounted_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+
+      Edict.Test.Repo.delete_all(UserRole)
+      {:ok, version} = Store.bump_version(cache, "user-1")
+      [hook] = mounted_socket.private.lifecycle.handle_info
+
+      {:halt, result_socket} =
+        hook.function.({:edict_version_bump, "user-1", version}, mounted_socket)
+
+      assert result_socket.redirected
+    end
+
+    test "raises when on_unauthorized does not redirect after revocation", %{
+      config: config,
+      cache: cache
+    } do
+      insert_role!("user-1", "viewer", "project", "7")
+      non_redirecting_config = Map.put(config, :config_module, Edict.Test.NonHaltingConfig)
+      socket = build_socket(%{current_user: %{id: "user-1"}})
+
+      opts = %{
+        edict_config: non_redirecting_config,
+        action: :read,
+        entity_type: :project,
+        param: "id"
+      }
+
+      {:cont, mounted_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+
+      Edict.Test.Repo.delete_all(UserRole)
+      {:ok, version} = Store.bump_version(cache, "user-1")
+      [hook] = mounted_socket.private.lifecycle.handle_info
+
+      assert_raise RuntimeError, ~r/redirect/, fn ->
+        hook.function.({:edict_version_bump, "user-1", version}, mounted_socket)
+      end
+    end
   end
 
   # T6 — Plug and LiveView with DB-backed state (cold cache)

@@ -229,5 +229,16 @@ defmodule Edict.CoreTest do
       assert_receive {:edict_version_bump, "user-1", _}, 1000
       assert_receive {:edict_version_bump, "user-2", _}, 1000
     end
+
+    test "invalidates a user assigned just before the delete", %{config: config, pubsub: pubsub} do
+      {:ok, _} = Core.assign_role(config, "user-1", "admin", "organization", "42")
+      racing_config = Map.put(config, :repo, Edict.Test.AssignBeforeDeleteRepo)
+
+      Phoenix.PubSub.subscribe(pubsub, "edict:user:user-3")
+
+      Core.revoke_entity(racing_config, "organization", "42")
+
+      assert_receive {:edict_version_bump, "user-3", _}, 1000
+    end
   end
 end

@@ -220,6 +220,8 @@ end
 
 On mount, the hook loads the document into `socket.assigns.current_user_roles` and subscribes to PubSub for real-time role change notifications.
 
+On each role change for the user, the hook reloads the document and re-runs the mount check. If the user lost access, `on_unauthorized` is called and must redirect the socket, which stops the LiveView. If it does not redirect, the LiveView raises, and the client's remount is denied.
+
 ### Per-event authorization (LiveView)
 
 ```elixir
