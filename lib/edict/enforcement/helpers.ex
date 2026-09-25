@@ -2,8 +2,10 @@ defmodule Edict.Enforcement.Helpers do
   @moduledoc """
   Permission check functions.
 
-  These read from the cached document in assigns — no cache or DB hit.
-  Action resolution happens at check time using the config module.
+  `can?/4` and `can?/5` read only the given document: no cache or DB hit.
+  `authorized?/6` is what enforcement uses. It checks strong actions against
+  the DB and everything else against the document. Action resolution happens
+  at check time using the config module.
   """
 
   require Logger
@@ -68,6 +70,68 @@ defmodule Edict.Enforcement.Helpers do
     Logger.error(
       "Edict cache unavailable (#{inspect(reason)}); authorizing user #{user_id} from the database"
     )
+  end
+
+  @doc """
+  Checks a permission, reading the DB for strong actions.
+
+  A strong action (`strong_action?/1` on the config module) is checked
+  against the user's current rows for the entity, never against the cache,
+  unless `opts` contains `strong: false`. Every other action is checked
+  against `document`. A `nil` or blank entity ID is always denied.
+  """
+  @spec authorized?(map(), Document.t(), atom(), atom(), term(), Enumerable.t()) :: boolean()
+  def authorized?(edict_config, document, action, entity_type, entity_id, opts) do
+    opts = strong_opts!(opts)
+    config_module = edict_config.config_module
+
+    document =
+      if strong_check?(config_module, action, entity_id, opts),
+        do: fresh_document(edict_config, document.user_id, entity_type, entity_id),
+        else: document
+
+    can?(document, action, entity_type, entity_id, config_module)
+  end
+
+  @doc """
+  Validates the `:strong` option and returns it as a keyword list.
+
+  Returns `[]` when absent and `[strong: false]` when opting out. Raises
+  `ArgumentError` for any other value: only the config makes an action strong.
+  """
+  @spec strong_opts!(Enumerable.t()) :: [] | [strong: false]
+  def strong_opts!(opts) do
+    case Enum.find(opts, &match?({:strong, _}, &1)) do
+      nil ->
+        []
+
+      {:strong, false} ->
+        [strong: false]
+
+      {:strong, value} ->
+        raise ArgumentError, "the :strong option only accepts false, got: #{inspect(value)}"
+    end
+  end
+
+  # A missing entity ID is denied by can?/5, so it never needs a DB read.
+  defp strong_check?(_config_module, _action, entity_id, _opts) when entity_id in [nil, ""],
+    do: false
+
+  defp strong_check?(config_module, action, _entity_id, opts),
+    do: config_module.strong_action?(action) and opts != [strong: false]
+
+  # Only this entity's rows, straight from the DB: a strong check never trusts
+  # the cache and never writes to it.
+  defp fresh_document(edict_config, user_id, entity_type, entity_id) do
+    rows =
+      Edict.Core.list_entity_roles(
+        edict_config,
+        user_id,
+        to_string(entity_type),
+        to_string(entity_id)
+      )
+
+    Document.new(user_id, rows, make_ref())
   end
 
   @doc "Check permission using an entity struct (via Edict.Entity protocol)."

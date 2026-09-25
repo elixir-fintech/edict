@@ -123,6 +123,17 @@ defmodule Edict.Core do
     |> config.repo.all()
   end
 
+  @doc "Lists a user's role assignments on one entity. Reads from DB, not cache."
+  @spec list_entity_roles(map(), String.t(), String.t(), String.t()) :: [UserRole.t()]
+  def list_entity_roles(config, user_id, entity_type, entity_id) do
+    from(ur in UserRole,
+      where:
+        ur.user_id == ^user_id and ur.entity_type == ^entity_type and
+          ur.entity_id == ^entity_id
+    )
+    |> config.repo.all()
+  end
+
   @doc """
   Assigns a role to a user across multiple entities.
 

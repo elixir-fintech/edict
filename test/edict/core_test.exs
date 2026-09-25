@@ -157,6 +157,18 @@ defmodule Edict.CoreTest do
     end
   end
 
+  describe "list_entity_roles/4" do
+    test "returns only the user's roles on that entity", %{config: config} do
+      {:ok, _} = Core.assign_role(config, "user-1", "admin", "project", "7")
+      {:ok, _} = Core.assign_role(config, "user-1", "viewer", "project", "8")
+      {:ok, _} = Core.assign_role(config, "user-2", "admin", "project", "7")
+
+      roles = Core.list_entity_roles(config, "user-1", "project", "7")
+
+      assert [%UserRole{user_id: "user-1", entity_id: "7", role: "admin"}] = roles
+    end
+  end
+
   describe "assign_roles/4" do
     test "assigns a role to multiple entities", %{config: config} do
       entities = [{"organization", "42"}, {"team", "10"}, {"project", "7"}]
