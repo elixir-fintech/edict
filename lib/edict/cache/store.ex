@@ -9,7 +9,8 @@ defmodule Edict.Cache.Store do
   sets a fresh one, so a version is never reused: not after its key
   expires, and not across nodes. `0` means no version is set.
 
-  TTL is configurable via application config:
+  The TTL bounds how long a node that missed a version bump can serve an old
+  document. It is configurable via application config:
 
       config :edict, ttl: :timer.minutes(15)
 

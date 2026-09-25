@@ -55,7 +55,7 @@ config :edict,
 # Optional settings with defaults:
 # cache: :edict_cache,
 # topic: "edict:versions",
-# ttl: :timer.minutes(10)
+# ttl: :timer.minutes(10)  # upper bound on staleness, see "Consistency guarantees"
 ```
 
 Add the supervisor to your application:
@@ -278,7 +278,26 @@ Each user has a cached authorization document containing their roles grouped by 
 3. Match: use document (sub-microsecond)
 4. Mismatch or miss: rebuild from DB (~1-5ms), cache result
 
-A configurable TTL (default: 10 minutes) acts as a safety net if PubSub messages are lost.
+Cached documents and versions expire after the TTL (default: 10 minutes), which repairs a node
+that missed a PubSub message.
+
+### Consistency guarantees
+
+Role changes are written to the DB first, then announced over PubSub. Caches are therefore
+eventually consistent:
+
+- **Normally, a revocation takes effect immediately** on every node: the next permission check
+  rebuilds from the DB, and mounted LiveViews re-check their mount permission.
+- **A node that misses the PubSub message** (network partition, node reconnecting) keeps
+  granting the old roles **until the TTL expires**. With the default TTL, that is up to 10 minutes.
+- **A check already in progress** when the role changes may still use the previous document.
+  Requests that passed the Plug before a revocation run to completion.
+
+A shorter TTL narrows the window at the cost of more DB reads:
+
+```elixir
+config :edict, ttl: :timer.minutes(1)
+```
 
 **If the cache is unavailable** (for example while Cachex restarts), permission checks build the
 document from the DB and skip caching it. Each fallback logs an error and emits a telemetry event:
