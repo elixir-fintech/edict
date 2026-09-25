@@ -280,6 +280,11 @@ This applies to `Edict.Plug`, `Edict.LiveView` (on mount), `authorize` event gua
 `Edict.can?`. Each strong check costs one indexed query. If the DB is unavailable, the check
 raises: a strong check never falls back to the cache.
 
+A strong check is current at the moment it queries the DB, not atomic with what your code does
+next: a role revoked between the check and your write does not stop that write. For operations
+that must be atomic with authorization, such as moving money, check the user's role inside the
+same DB transaction as the write.
+
 A strong check protects the moment it runs: a request, a mount, or an event. A LiveView that
 is already open re-checks its mount permission only when the node receives the role change,
 and a node that missed it keeps the LiveView running. **Guard every event that performs a
