@@ -9,6 +9,8 @@ defmodule Edict.Config do
 
         user_from_assigns fn assigns -> assigns.current_user.id end
 
+        strong_actions [:delete]
+
         entity_types do
           entity :organization, struct: MyApp.Organization
           entity :project, struct: MyApp.Project
@@ -28,6 +30,7 @@ defmodule Edict.Config do
   - `valid_role?/1` — whether a role is defined
   - `valid_entity_type?/1` — whether an entity type is defined
   - `valid_action?/2` — whether an action is valid for an entity type
+  - `strong_action?/1` — whether an action is always checked against the database
   - `entity_types/0` — list of valid entity types
   - `user_id_from_assigns/1` — extract user ID from conn/socket assigns
   """
@@ -41,9 +44,11 @@ defmodule Edict.Config do
       Module.register_attribute(__MODULE__, :edict_role_actions, accumulate: true)
       Module.register_attribute(__MODULE__, :edict_user_from_assigns, accumulate: false)
       Module.register_attribute(__MODULE__, :edict_on_unauthorized, accumulate: false)
+      Module.register_attribute(__MODULE__, :edict_strong_actions, accumulate: false)
 
       Module.put_attribute(__MODULE__, :edict_user_from_assigns, nil)
       Module.put_attribute(__MODULE__, :edict_on_unauthorized, nil)
+      Module.put_attribute(__MODULE__, :edict_strong_actions, nil)
 
       import Edict.Config,
         only: [
@@ -53,7 +58,8 @@ defmodule Edict.Config do
           role: 2,
           on: 2,
           user_from_assigns: 1,
-          on_unauthorized: 1
+          on_unauthorized: 1,
+          strong_actions: 1
         ]
     end
   end
@@ -71,6 +77,28 @@ defmodule Edict.Config do
 
     quote do
       Module.put_attribute(__MODULE__, :edict_on_unauthorized, unquote(escaped))
+    end
+  end
+
+  @doc """
+  Declares actions that are always checked against the database.
+
+  Takes a literal list of atoms and may appear at most once. Every listed
+  action must be granted by some role.
+  """
+  defmacro strong_actions(actions) do
+    unless is_list(actions) and Enum.all?(actions, &is_atom/1) do
+      raise CompileError,
+        description:
+          "strong_actions expects a literal list of atoms, got: #{Macro.to_string(actions)}"
+    end
+
+    quote do
+      if Module.get_attribute(__MODULE__, :edict_strong_actions) do
+        raise CompileError, description: "strong_actions can only be declared once"
+      end
+
+      Module.put_attribute(__MODULE__, :edict_strong_actions, unquote(actions))
     end
   end
 
@@ -123,6 +151,7 @@ defmodule Edict.Config do
     role_actions = Module.get_attribute(env.module, :edict_role_actions)
     user_from_assigns = Module.get_attribute(env.module, :edict_user_from_assigns)
     on_unauthorized_fn = Module.get_attribute(env.module, :edict_on_unauthorized)
+    strong_actions = Module.get_attribute(env.module, :edict_strong_actions) || []
 
     entity_type_names = Enum.map(entities, fn {name, _, _} -> name end)
 
@@ -135,6 +164,8 @@ defmodule Edict.Config do
               "Valid entity types: #{inspect(entity_type_names)}"
       end
     end
+
+    validate_strong_actions!(strong_actions, role_actions)
 
     # Generate actions_for/2 clauses
     actions_for_clauses =
@@ -221,6 +252,9 @@ defmodule Edict.Config do
       @doc "Returns `true` if the action is valid for the given entity type."
       def valid_action?(_action, _entity_type), do: false
 
+      @doc "Returns `true` if the action is strong: always checked against the database."
+      def strong_action?(action), do: action in unquote(strong_actions)
+
       @doc "Extracts the user ID from conn/socket assigns."
       def user_id_from_assigns(assigns), do: unquote(user_fn).(assigns)
 
@@ -229,6 +263,21 @@ defmodule Edict.Config do
 
       # Protocol implementations
       unquote_splicing(protocol_impls)
+    end
+  end
+
+  defp validate_strong_actions!(strong_actions, role_actions) do
+    granted = Enum.flat_map(role_actions, fn {_role, _entity_type, actions} -> actions end)
+
+    case Enum.reject(strong_actions, &(&1 in granted)) do
+      [] ->
+        :ok
+
+      unknown ->
+        raise CompileError,
+          description:
+            "strong_actions lists actions no role grants: #{inspect(unknown)}. " <>
+              "Granted actions: #{inspect(Enum.uniq(granted))}"
     end
   end
 end

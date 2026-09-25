@@ -98,4 +98,57 @@ defmodule Edict.ConfigTest do
       end
     end
   end
+
+  describe "strong_action?/1" do
+    test "is true for a listed action" do
+      assert Edict.Test.StrongConfig.strong_action?(:approve_transfer)
+    end
+
+    test "is false for an unlisted action" do
+      refute Edict.Test.StrongConfig.strong_action?(:read)
+    end
+
+    test "is false for every action without strong_actions" do
+      refute Edict.Test.Config.strong_action?(:delete)
+    end
+  end
+
+  describe "strong_actions/1" do
+    test "rejects an action no role grants" do
+      assert_raise CompileError, ~r/:approve_transfr/, fn ->
+        compile_config("strong_actions([:approve_transfr])")
+      end
+    end
+
+    test "rejects a second declaration" do
+      assert_raise CompileError, ~r/once/, fn ->
+        compile_config("strong_actions([:read])\nstrong_actions([:read])")
+      end
+    end
+
+    test "rejects a value that is not a list of atoms" do
+      assert_raise CompileError, ~r/list of atoms/, fn ->
+        compile_config("strong_actions(:read)")
+      end
+    end
+  end
+
+  defp compile_config(declaration) do
+    module = "Edict.ConfigTest.Compiled#{System.unique_integer([:positive])}"
+
+    Code.compile_string("""
+    defmodule #{module} do
+      use Edict.Config
+      #{declaration}
+
+      entity_types do
+        entity(:account)
+      end
+
+      role :viewer do
+        on(:account, actions: [:read])
+      end
+    end
+    """)
+  end
 end

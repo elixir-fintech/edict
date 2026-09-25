@@ -219,6 +219,7 @@ defmodule Edict do
       {:valid_role?, 1},
       {:valid_action?, 2},
       {:actions_for, 2},
+      {:strong_action?, 1},
       {:user_id_from_assigns, 1},
       {:on_unauthorized, 0}
     ]

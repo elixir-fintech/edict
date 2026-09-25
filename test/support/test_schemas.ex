@@ -13,3 +13,7 @@ end
 defmodule Edict.Test.Resource do
   defstruct [:uuid, :name]
 end
+
+defmodule Edict.Test.Account do
+  defstruct [:id, :name]
+end
