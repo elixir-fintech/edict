@@ -34,6 +34,7 @@ defmodule Edict do
       doc = Edict.load_document(user_id)
       Edict.can?(doc, :read, @project)          # via Edict.Entity protocol
       Edict.can?(doc, :read, :project, "7")      # raw type + id
+      Edict.can?(doc, :approve_transfer, @account, strong: false)  # cached, for display
 
   In Plug and LiveView, the document is loaded automatically into
   `assigns.current_user_roles` — use `can?/3` or `can?/4` directly in templates.
@@ -178,16 +179,34 @@ defmodule Edict do
 
   # --- Permission Checks ---
 
-  @doc "Check permission using an entity struct (via Edict.Entity protocol)."
+  @doc """
+  Check permission using an entity struct (via Edict.Entity protocol).
+
+  Strong actions are checked against the database. Pass `strong: false` to
+  check the document instead, for example to show or hide a button.
+  """
   @spec can?(Document.t(), atom(), struct()) :: boolean()
-  def can?(document, action, entity) when is_struct(entity) do
-    Helpers.can?(document, action, entity, config().config_module)
+  def can?(document, action, entity) when is_struct(entity),
+    do: can?(document, action, entity, [])
+
+  @doc """
+  Check permission with an entity struct and options, or with a raw entity
+  type and ID.
+  """
+  @spec can?(Document.t(), atom(), struct() | atom(), keyword() | id()) :: boolean()
+  def can?(document, action, entity, opts) when is_struct(entity) and is_list(opts) do
+    entity_type = Edict.Entity.entity_type(entity)
+    entity_id = Edict.Entity.entity_id(entity)
+    can?(document, action, entity_type, entity_id, opts)
   end
 
-  @doc "Check permission using entity_type and entity_id directly."
-  @spec can?(Document.t(), atom(), atom(), id()) :: boolean()
-  def can?(document, action, entity_type, entity_id) do
-    Helpers.can?(document, action, entity_type, entity_id, config().config_module)
+  def can?(document, action, entity_type, entity_id) when is_atom(entity_type),
+    do: can?(document, action, entity_type, entity_id, [])
+
+  @doc "Check permission using entity_type and entity_id directly, with options."
+  @spec can?(Document.t(), atom(), atom(), id(), keyword()) :: boolean()
+  def can?(document, action, entity_type, entity_id, opts) do
+    Helpers.authorized?(config(), document, action, entity_type, entity_id, opts)
   end
 
   # --- Document Loading ---

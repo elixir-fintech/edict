@@ -189,4 +189,32 @@ defmodule EdictTest do
       end
     end
   end
+
+  describe "can? with strong actions" do
+    setup do
+      Application.put_env(:edict, :config_module, Edict.Test.StrongConfig)
+      {:ok, _} = Edict.assign_role("alice", :treasurer, :account, "7")
+      doc = Edict.load_document("alice")
+      # Revoke without notifying the cache: doc is now stale
+      Edict.Test.Repo.delete_all(Edict.Schema.UserRole)
+
+      %{doc: doc, account: %Edict.Test.Account{id: "7"}}
+    end
+
+    test "can?/3 checks a strong action against the DB", %{doc: doc, account: account} do
+      refute Edict.can?(doc, :approve_transfer, account)
+    end
+
+    test "can?/4 with strong: false checks the document", %{doc: doc, account: account} do
+      assert Edict.can?(doc, :approve_transfer, account, strong: false)
+    end
+
+    test "can?/4 with type and ID checks a strong action against the DB", %{doc: doc} do
+      refute Edict.can?(doc, :approve_transfer, :account, "7")
+    end
+
+    test "can?/5 with strong: false checks the document", %{doc: doc} do
+      assert Edict.can?(doc, :approve_transfer, :account, "7", strong: false)
+    end
+  end
 end
