@@ -20,6 +20,9 @@ defmodule Edict.Enforcement.Plug do
   Strong actions (see `Edict.Config.strong_actions/1`) are always checked against
   the database. The `:strong` option is rejected: only `Edict.can?` may opt out.
 
+  Missing `:action`, `:entity_type`, or both `:param` and `:entity_from` raise
+  `ArgumentError` when the plug is initialized, so a pipeline fails at compile time.
+
   The connection is always halted on denial, even if `on_unauthorized` does not halt it.
   """
 
@@ -31,7 +34,7 @@ defmodule Edict.Enforcement.Plug do
   def init(opts) when is_list(opts), do: opts |> Map.new() |> init()
 
   def init(opts) when is_map(opts) do
-    Helpers.reject_strong!(opts)
+    Helpers.validate_enforcement_opts!(opts, "Edict.Plug")
     opts
   end
 

@@ -41,8 +41,9 @@ defmodule Edict.Enforcement.Authorize do
   @required_options [:action, :entity_from_assigns, :entity_type]
 
   defmacro authorize(event_name, opts) do
-    [action, assigns_key, entity_type] = Enum.map(@required_options, &fetch_option!(opts, &1))
+    Edict.Enforcement.Helpers.require_options!(opts, @required_options, "authorize")
     Edict.Enforcement.Helpers.reject_strong!(opts)
+    [action, assigns_key, entity_type] = Enum.map(@required_options, &Keyword.fetch!(opts, &1))
 
     quote do
       Module.put_attribute(__MODULE__, :edict_authorizations, {
@@ -51,15 +52,6 @@ defmodule Edict.Enforcement.Authorize do
         unquote(assigns_key),
         unquote(entity_type)
       })
-    end
-  end
-
-  # A security declaration must be explicit: a default could silently guard
-  # the wrong action or resource.
-  defp fetch_option!(opts, key) do
-    case Keyword.fetch(opts, key) do
-      {:ok, value} -> value
-      :error -> raise ArgumentError, "authorize requires the #{inspect(key)} option"
     end
   end
 

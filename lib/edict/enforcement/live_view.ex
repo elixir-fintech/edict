@@ -27,6 +27,9 @@ defmodule Edict.Enforcement.LiveView do
   Strong actions (see `Edict.Config.strong_actions/1`) are always checked against
   the database. The `:strong` option is rejected: only `Edict.can?` may opt out.
 
+  Missing `:action`, `:entity_type`, or both `:param` and `:entity_from` raise
+  `ArgumentError` on mount, before any cache or DB access.
+
   After mount, every version bump for the user re-runs the same check against
   the user's roles read from the database, not the cache. If it
   fails, `on_unauthorized` is called and must redirect the socket; if it does
@@ -44,7 +47,7 @@ defmodule Edict.Enforcement.LiveView do
 
   def on_mount(opts, params, _session, socket) do
     opts = Map.new(opts)
-    Helpers.reject_strong!(opts)
+    Helpers.validate_enforcement_opts!(opts, "Edict.LiveView")
     edict_config = opts[:edict_config] || socket.assigns[:edict_config] || Edict.config()
     user_id = edict_config.config_module.user_id_from_assigns(socket.assigns) |> to_string()
 

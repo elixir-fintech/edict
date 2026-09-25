@@ -139,4 +139,22 @@ defmodule Edict.Enforcement.PlugTest do
       EdictPlug.init(action: :read, entity_type: :project, param: "id", strong: false)
     end
   end
+
+  test "init rejects missing :action" do
+    assert_raise ArgumentError, ~r/:action/, fn ->
+      EdictPlug.init(entity_type: :project, param: "id")
+    end
+  end
+
+  test "init rejects missing :entity_type" do
+    assert_raise ArgumentError, ~r/:entity_type/, fn ->
+      EdictPlug.init(action: :read, param: "id")
+    end
+  end
+
+  test "init rejects a missing entity ID source" do
+    assert_raise ArgumentError, ~r/:param or :entity_from/, fn ->
+      EdictPlug.init(action: :read, entity_type: :project)
+    end
+  end
 end

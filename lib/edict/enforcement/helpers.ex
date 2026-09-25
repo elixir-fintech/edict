@@ -114,6 +114,40 @@ defmodule Edict.Enforcement.Helpers do
   end
 
   @doc """
+  Raises `ArgumentError` unless `opts` contains every key in `keys`.
+
+  A security declaration must be explicit: a default could silently guard
+  the wrong action or resource.
+  """
+  @spec require_options!(Enumerable.t(), [atom()], String.t()) :: :ok
+  def require_options!(opts, keys, owner) do
+    case Enum.reject(keys, &has_option?(opts, &1)) do
+      [] -> :ok
+      [key | _] -> raise ArgumentError, "#{owner} requires the #{inspect(key)} option"
+    end
+  end
+
+  @doc """
+  Validates `Edict.Plug` and `Edict.LiveView` options up front.
+
+  Requires `:action`, `:entity_type`, and `:param` or `:entity_from`, and
+  rejects `:strong`.
+  """
+  @spec validate_enforcement_opts!(Enumerable.t(), String.t()) :: :ok
+  def validate_enforcement_opts!(opts, owner) do
+    reject_strong!(opts)
+    require_options!(opts, [:action, :entity_type], owner)
+
+    unless has_option?(opts, :param) or has_option?(opts, :entity_from) do
+      raise ArgumentError, "#{owner} requires the :param or :entity_from option"
+    end
+
+    :ok
+  end
+
+  defp has_option?(opts, key), do: Enum.any?(opts, &match?({^key, _}, &1))
+
+  @doc """
   Raises `ArgumentError` if `opts` contains `:strong`.
 
   Enforcement (Plug, LiveView mount, `authorize` events) always follows
@@ -121,7 +155,7 @@ defmodule Edict.Enforcement.Helpers do
   """
   @spec reject_strong!(Enumerable.t()) :: :ok
   def reject_strong!(opts) do
-    if Enum.any?(opts, &match?({:strong, _}, &1)) do
+    if has_option?(opts, :strong) do
       raise ArgumentError,
             "the :strong option is only accepted by Edict.can?; " <>
               "enforcement always follows strong_actions"

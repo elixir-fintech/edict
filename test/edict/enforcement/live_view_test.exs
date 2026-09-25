@@ -145,4 +145,22 @@ defmodule Edict.Enforcement.LiveViewTest do
       EdictLiveView.on_mount(strong_opts, params, %{}, socket)
     end
   end
+
+  test "mount rejects missing :action", %{opts: opts, socket: socket, params: params} do
+    assert_raise ArgumentError, ~r/:action/, fn ->
+      EdictLiveView.on_mount(Map.delete(opts, :action), params, %{}, socket)
+    end
+  end
+
+  test "mount rejects missing :entity_type", %{opts: opts, socket: socket, params: params} do
+    assert_raise ArgumentError, ~r/:entity_type/, fn ->
+      EdictLiveView.on_mount(Map.delete(opts, :entity_type), params, %{}, socket)
+    end
+  end
+
+  test "mount rejects a missing entity ID source", %{opts: opts, socket: socket, params: params} do
+    assert_raise ArgumentError, ~r/:param or :entity_from/, fn ->
+      EdictLiveView.on_mount(Map.delete(opts, :entity_from), params, %{}, socket)
+    end
+  end
 end
