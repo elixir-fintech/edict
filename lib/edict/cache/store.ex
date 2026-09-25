@@ -25,7 +25,7 @@ defmodule Edict.Cache.Store do
   @doc "Stores an authorization document in the cache."
   @spec put_document(atom(), String.t(), Edict.Cache.Document.t()) :: :ok
   def put_document(cache, user_id, document) do
-    Cachex.put(cache, {:auth_doc, user_id}, document, ttl: ttl())
+    Cachex.put(cache, {:auth_doc, user_id}, document, expire: ttl())
     :ok
   end
 
@@ -60,7 +60,7 @@ defmodule Edict.Cache.Store do
   @doc "Sets a specific version for a user."
   @spec set_version(atom(), String.t(), version()) :: :ok
   def set_version(cache, user_id, version) do
-    Cachex.put(cache, {:auth_version, user_id}, version, ttl: ttl())
+    Cachex.put(cache, {:auth_version, user_id}, version, expire: ttl())
     :ok
   end
 

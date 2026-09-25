@@ -60,4 +60,33 @@ defmodule Edict.Cache.StoreTest do
       assert {:ok, 0} = Store.get_version(cache, "user-1")
     end
   end
+
+  describe "expiration" do
+    test "put_document sets an expiration on the document", %{cache: cache} do
+      doc = %Document{user_id: "user-1", version: 1, roles: %{}}
+
+      :ok = Store.put_document(cache, "user-1", doc)
+
+      assert {:ok, ttl} = Cachex.ttl(cache, {:auth_doc, "user-1"})
+      assert ttl in 1..:timer.minutes(10)
+    end
+
+    test "set_version sets an expiration on the version", %{cache: cache} do
+      :ok = Store.set_version(cache, "user-1", make_ref())
+
+      assert {:ok, ttl} = Cachex.ttl(cache, {:auth_version, "user-1"})
+      assert ttl in 1..:timer.minutes(10)
+    end
+
+    test "honours the configured ttl", %{cache: cache} do
+      Application.put_env(:edict, :ttl, :timer.seconds(5))
+      on_exit(fn -> Application.delete_env(:edict, :ttl) end)
+      doc = %Document{user_id: "user-1", version: 1, roles: %{}}
+
+      :ok = Store.put_document(cache, "user-1", doc)
+
+      assert {:ok, ttl} = Cachex.ttl(cache, {:auth_doc, "user-1"})
+      assert ttl in 1..:timer.seconds(5)
+    end
+  end
 end
