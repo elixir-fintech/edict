@@ -260,6 +260,42 @@ end
 
 `can?/3` uses the `Edict.Entity` protocol to extract type and ID from the struct. `can?/4` takes them directly.
 
+## Strong actions
+
+Cached checks can be stale for up to the TTL on a node that missed a role change
+(see [Consistency guarantees](#consistency-guarantees)). For high-risk actions, declare
+them strong: every check of a strong action reads the user's current roles on that
+entity from the DB, never from the cache.
+
+```elixir
+defmodule MyApp.AuthConfig do
+  use Edict.Config
+
+  strong_actions [:approve_transfer, :delete]
+  # ...
+end
+```
+
+This applies to `Edict.Plug`, `Edict.LiveView` (on mount and on every role change),
+`authorize` event guards, and `Edict.can?`. Each strong check costs one indexed query.
+If the DB is unavailable, the check raises: a strong check never falls back to the cache.
+
+Pass `strong: false` where a stale answer is acceptable, typically in templates:
+
+```heex
+<%= if Edict.can?(@current_user_roles, :approve_transfer, @account, strong: false) do %>
+  <button phx-click="approve">Approve</button>
+<% end %>
+```
+
+Pair it with a strong check on the event itself:
+
+```elixir
+authorize "approve", action: :approve_transfer, entity_from_assigns: :account_id, entity_type: :account
+```
+
+`strong: false` is the only accepted value. Only the config makes an action strong.
+
 ## How caching works
 
 Each user has a cached authorization document containing their roles grouped by entity. The document is stored in Cachex (ETS-backed) with a version: a unique reference that each role change replaces, so a version is never reused.
@@ -292,6 +328,7 @@ eventually consistent:
   granting the old roles **until the TTL expires**. With the default TTL, that is up to 10 minutes.
 - **A check already in progress** when the role changes may still use the previous document.
   Requests that passed the Plug before a revocation run to completion.
+- **Strong actions are not affected**: they read the DB on every check (see [Strong actions](#strong-actions)).
 
 A shorter TTL narrows the window at the cost of more DB reads:
 
