@@ -40,9 +40,7 @@ defmodule Edict.Enforcement.Plug do
 
   @impl Plug
   def call(conn, opts) do
-    edict_config = opts[:edict_config] || conn.assigns[:edict_config] || Edict.config()
-    config_module = edict_config.config_module
-    user_id = config_module.user_id_from_assigns(conn.assigns) |> to_string()
+    {edict_config, user_id} = Helpers.resolve(opts, conn.assigns)
     entity_type = opts.entity_type
     entity_id = entity_id(opts, conn)
 
@@ -51,7 +49,7 @@ defmodule Edict.Enforcement.Plug do
     if Helpers.authorized?(edict_config, document, opts.action, entity_type, entity_id, []) do
       Plug.Conn.assign(conn, :current_user_roles, document)
     else
-      unauthorized(conn, config_module)
+      unauthorized(conn, edict_config.config_module)
     end
   end
 

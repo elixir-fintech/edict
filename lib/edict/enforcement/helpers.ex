@@ -119,6 +119,18 @@ defmodule Edict.Enforcement.Helpers do
   end
 
   @doc """
+  Returns the Edict config for a check and the current user's ID.
+
+  The config comes from `opts`, then `assigns`, then the app env.
+  """
+  @spec resolve(map(), map()) :: {map(), String.t()}
+  def resolve(opts, assigns) do
+    edict_config = opts[:edict_config] || assigns[:edict_config] || Edict.config()
+    user_id = edict_config.config_module.user_id_from_assigns(assigns) |> to_string()
+    {edict_config, user_id}
+  end
+
+  @doc """
   Raises `ArgumentError` unless `opts` contains every key in `keys`.
 
   A security declaration must be explicit: a default could silently guard

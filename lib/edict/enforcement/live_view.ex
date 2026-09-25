@@ -48,8 +48,7 @@ defmodule Edict.Enforcement.LiveView do
   def on_mount(opts, params, _session, socket) do
     opts = Map.new(opts)
     Helpers.validate_enforcement_opts!(opts, "Edict.LiveView")
-    edict_config = opts[:edict_config] || socket.assigns[:edict_config] || Edict.config()
-    user_id = edict_config.config_module.user_id_from_assigns(socket.assigns) |> to_string()
+    {edict_config, user_id} = Helpers.resolve(opts, socket.assigns)
 
     policy = {opts.action, opts.entity_type, entity_id(opts, params)}
 
