@@ -21,11 +21,13 @@ defmodule Edict.Enforcement.Authorize do
   registers an `on_mount` hook that attaches a `:handle_event` hook: for every
   declared event, the permission is checked against `current_user_roles`
   before your `handle_event/3` runs. A denied event calls `on_unauthorized` and
-  never reaches it; undeclared events pass through. LiveComponents are not
-  supported.
+  never reaches it; undeclared events pass through. `handle_event` hooks
+  attached before this one (for example by a `live_session` `on_mount`) still
+  see declared events first. LiveComponents are not supported.
 
   `:action`, `:entity_from_assigns` and `:entity_type` are required; a missing
-  one fails compilation, and so does declaring an event twice. Strong actions
+  one fails compilation, and so does declaring an event twice or naming it
+  with anything but a string. Strong actions
   (see `Edict.Config.strong_actions/1`) are always checked against the
   database; a `:strong` option fails compilation, since only `Edict.can?` may
   opt out. An action the entity type does not define raises `ArgumentError`
@@ -38,9 +40,13 @@ defmodule Edict.Enforcement.Authorize do
 
   defmacro __using__(_opts) do
     quote do
+      # :phoenix_live_mount is registered by `use Phoenix.LiveView` (a LiveView
+      # internal), and on_mount/1 below accumulates into it.
       unless Module.has_attribute?(__MODULE__, :phoenix_live_mount) do
         raise CompileError,
-          description: "use Edict.Enforcement.Authorize must come after use Phoenix.LiveView"
+          description:
+            "use Edict.Enforcement.Authorize must come after use Phoenix.LiveView " <>
+              "(LiveComponents are not supported)"
       end
 
       Module.register_attribute(__MODULE__, :edict_authorizations, accumulate: true)
@@ -68,11 +74,23 @@ defmodule Edict.Enforcement.Authorize do
 
   defmacro __before_compile__(env) do
     authorizations = Module.get_attribute(env.module, :edict_authorizations)
+    validate_event_names!(authorizations)
     validate_unique_events!(authorizations)
 
     quote do
       @doc false
       def __edict_authorizations__, do: unquote(Macro.escape(Map.new(authorizations)))
+    end
+  end
+
+  # LiveView sends event names as strings, so any other name would never match
+  # and its event would go unguarded.
+  defp validate_event_names!(authorizations) do
+    invalid = for {event, _policy} <- authorizations, not is_binary(event), do: event
+
+    unless invalid == [] do
+      raise CompileError,
+        description: "authorize event names must be strings, got: #{inspect(invalid)}"
     end
   end
 

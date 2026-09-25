@@ -120,6 +120,26 @@ defmodule Edict.Enforcement.AuthorizeTest do
     end
   end
 
+  test "a declared event without current_user_roles fails closed", %{edict_config: edict_config} do
+    socket = build_socket(%{project_id: "7", edict_config: edict_config})
+
+    assert_raise FunctionClauseError, fn -> run_hook("delete", socket) end
+  end
+
+  test "use registers the hook as an on_mount" do
+    mount_ids = Enum.map(TestLiveView.__live__().lifecycle.mount, & &1.id)
+
+    assert {Authorize, TestLiveView} in mount_ids
+  end
+
+  test "a non-string event name fails to compile" do
+    assert_raise CompileError, ~r/string/, fn ->
+      compile_authorize(
+        ~s|authorize(:delete, action: :delete, entity_from_assigns: :project_id, entity_type: :project)|
+      )
+    end
+  end
+
   test "declaring an event twice fails to compile" do
     assert_raise CompileError, ~r/more than once/, fn ->
       compile_authorize("""

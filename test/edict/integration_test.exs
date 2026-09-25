@@ -19,6 +19,7 @@ defmodule Edict.IntegrationTest do
   import ExUnit.CaptureLog
 
   alias Edict.Cache.{Document, PubSubListener, Store}
+  alias Edict.Enforcement.Authorize
   alias Edict.Enforcement.Helpers
   alias Edict.Enforcement.LiveView, as: EdictLiveView
   alias Edict.Enforcement.Plug, as: EdictPlug
@@ -305,7 +306,7 @@ defmodule Edict.IntegrationTest do
         })
 
       {:cont, mounted} =
-        Edict.Enforcement.Authorize.on_mount(StrongEventLiveView, %{}, %{}, socket)
+        Authorize.on_mount(StrongEventLiveView, %{}, %{}, socket)
 
       [hook] = mounted.private.lifecycle.handle_event
 
