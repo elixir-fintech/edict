@@ -41,11 +41,15 @@ defmodule Edict.Supervisor do
     pubsub = Keyword.get(opts, :pubsub) || Application.fetch_env!(:edict, :pubsub)
     cache_name = Keyword.get(opts, :cache_name, Application.get_env(:edict, :cache, :edict_cache))
     topic = Keyword.get(opts, :topic, Application.get_env(:edict, :topic, "edict:versions"))
-    config_module = Keyword.get(opts, :config_module, Application.get_env(:edict, :config_module))
+
+    config_module =
+      Keyword.get_lazy(opts, :config_module, fn ->
+        Application.fetch_env!(:edict, :config_module)
+      end)
 
     # Loads the config module at startup: documents keep only roles whose atoms
     # exist, and they exist once the module is loaded.
-    if config_module, do: Edict.validate_config!(config_module)
+    Edict.validate_config!(config_module)
 
     children = [
       {Cachex, name: cache_name},
