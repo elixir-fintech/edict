@@ -128,6 +128,17 @@ defmodule Edict.IntegrationTest do
     end
   end
 
+  describe "load_document when the cache is not running" do
+    test "returns the roles from the DB", %{config: config} do
+      insert_role!("user-1", "admin", "project", "7")
+      down_config = Map.put(config, :cache, :edict_cache_not_started)
+
+      doc = Helpers.load_document(down_config, "user-1")
+
+      assert [:admin] = Document.roles_for(doc, :project, "7")
+    end
+  end
+
   # T6 — Plug and LiveView with DB-backed state (cold cache)
   describe "Plug integration with DB" do
     test "loads document from DB on cold cache", %{config: config} do

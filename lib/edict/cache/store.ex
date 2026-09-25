@@ -30,12 +30,12 @@ defmodule Edict.Cache.Store do
   end
 
   @doc "Retrieves an authorization document from the cache."
-  @spec get_document(atom(), String.t()) :: {:ok, Edict.Cache.Document.t()} | :miss
+  @spec get_document(atom(), String.t()) ::
+          {:ok, Edict.Cache.Document.t()} | :miss | {:error, term()}
   def get_document(cache, user_id) do
     case Cachex.get(cache, {:auth_doc, user_id}) do
       {:ok, nil} -> :miss
-      {:ok, doc} -> {:ok, doc}
-      {:error, _} -> :miss
+      result -> result
     end
   end
 
@@ -48,12 +48,11 @@ defmodule Edict.Cache.Store do
   end
 
   @doc "Returns the current version for a user, or `0` if none is set."
-  @spec get_version(atom(), String.t()) :: {:ok, version()}
+  @spec get_version(atom(), String.t()) :: {:ok, version()} | {:error, term()}
   def get_version(cache, user_id) do
     case Cachex.get(cache, {:auth_version, user_id}) do
       {:ok, nil} -> {:ok, 0}
-      {:ok, version} -> {:ok, version}
-      {:error, _} -> {:ok, 0}
+      result -> result
     end
   end
 

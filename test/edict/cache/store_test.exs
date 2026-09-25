@@ -61,6 +61,16 @@ defmodule Edict.Cache.StoreTest do
     end
   end
 
+  describe "when the cache is not running" do
+    test "get_document returns the cache error" do
+      assert {:error, :no_cache} = Store.get_document(:edict_cache_not_started, "user-1")
+    end
+
+    test "get_version returns the cache error" do
+      assert {:error, :no_cache} = Store.get_version(:edict_cache_not_started, "user-1")
+    end
+  end
+
   describe "expiration" do
     test "put_document sets an expiration on the document", %{cache: cache} do
       doc = %Document{user_id: "user-1", version: 1, roles: %{}}

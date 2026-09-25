@@ -12,21 +12,24 @@ defmodule Edict.Enforcement.Helpers do
   Loads (or rebuilds) the authorization document for a user from cache.
 
   Returns the cached document if fresh, or rebuilds from DB if stale/missing.
+  If the cache is unavailable, builds the document from DB without caching it.
   """
   @spec load_document(map(), String.t()) :: Document.t()
   def load_document(config, user_id) do
-    case Store.get_document(config.cache, user_id) do
-      {:ok, doc} ->
-        {:ok, current_version} = Store.get_version(config.cache, user_id)
+    case cached_document(config.cache, user_id) do
+      {:ok, doc} -> doc
+      :stale -> rebuild_document(config, user_id)
+      {:error, _reason} -> build_from_db(config, user_id)
+    end
+  end
 
-        if doc.version == current_version do
-          doc
-        else
-          rebuild_document(config, user_id)
-        end
-
-      :miss ->
-        rebuild_document(config, user_id)
+  defp cached_document(cache, user_id) do
+    with {:ok, doc} <- Store.get_document(cache, user_id),
+         {:ok, version} <- Store.get_version(cache, user_id) do
+      if doc.version == version, do: {:ok, doc}, else: :stale
+    else
+      :miss -> :stale
+      error -> error
     end
   end
 
@@ -34,11 +37,22 @@ defmodule Edict.Enforcement.Helpers do
   # leaves this document tagged with the older version, so the next load
   # rebuilds instead of serving stale roles as current.
   defp rebuild_document(config, user_id) do
-    {:ok, version} = Store.get_version(config.cache, user_id)
-    role_rows = Edict.Core.list_roles(config, user_id)
-    doc = Document.new(user_id, role_rows, version)
-    Store.put_document(config.cache, user_id, doc)
-    doc
+    case Store.get_version(config.cache, user_id) do
+      {:ok, version} ->
+        doc = Document.new(user_id, Edict.Core.list_roles(config, user_id), version)
+        Store.put_document(config.cache, user_id, doc)
+        doc
+
+      {:error, _reason} ->
+        build_from_db(config, user_id)
+    end
+  end
+
+  # Freshness can't be established without the cache, so the DB is the only
+  # source. The document is not cached, and its unique version never matches
+  # a stored one.
+  defp build_from_db(config, user_id) do
+    Document.new(user_id, Edict.Core.list_roles(config, user_id), make_ref())
   end
 
   @doc "Check permission using an entity struct (via Edict.Entity protocol)."
