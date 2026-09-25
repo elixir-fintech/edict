@@ -38,7 +38,7 @@ defmodule Edict.MixProject do
 
       # Dev/test
       {:postgrex, ">= 0.0.0", only: :test},
-      {:cabbage, "~> 0.4", only: :test},
+      {:cabbage, github: "elixir-fintech/cabbage", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
