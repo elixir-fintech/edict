@@ -276,9 +276,14 @@ defmodule MyApp.AuthConfig do
 end
 ```
 
-This applies to `Edict.Plug`, `Edict.LiveView` (on mount and on every role change),
-`authorize` event guards, and `Edict.can?`. Each strong check costs one indexed query.
-If the DB is unavailable, the check raises: a strong check never falls back to the cache.
+This applies to `Edict.Plug`, `Edict.LiveView` (on mount), `authorize` event guards, and
+`Edict.can?`. Each strong check costs one indexed query. If the DB is unavailable, the check
+raises: a strong check never falls back to the cache.
+
+A strong check protects the moment it runs: a request, a mount, or an event. A LiveView that
+is already open re-checks its mount permission only when the node receives the role change,
+and a node that missed it keeps the LiveView running. **Guard every event that performs a
+strong action with `authorize`**, not only the mount.
 
 Pass `strong: false` where a stale answer is acceptable, typically in templates:
 
@@ -328,7 +333,9 @@ eventually consistent:
   granting the old roles **until the TTL expires**. With the default TTL, that is up to 10 minutes.
 - **A check already in progress** when the role changes may still use the previous document.
   Requests that passed the Plug before a revocation run to completion.
-- **Strong actions are not affected**: they read the DB on every check (see [Strong actions](#strong-actions)).
+- **Strong checks are not affected**: every check of a strong action reads the DB (see
+  [Strong actions](#strong-actions)). An open LiveView is not re-checked until the node receives
+  the role change, so guard strong events with `authorize`.
 
 A shorter TTL narrows the window at the cost of more DB reads:
 

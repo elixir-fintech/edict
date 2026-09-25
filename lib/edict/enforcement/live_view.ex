@@ -30,6 +30,10 @@ defmodule Edict.Enforcement.LiveView do
   After mount, every version bump for the user re-runs the same check. If it
   fails, `on_unauthorized` is called and must redirect the socket; if it does
   not, the LiveView raises so the client remounts and is denied.
+
+  The re-check runs only when this node receives the version bump. A node that
+  missed it keeps the LiveView open, even for a strong action, so guard every
+  event that performs a strong action with `Edict.Enforcement.Authorize`.
   """
 
   import Phoenix.Component, only: [assign: 3]
