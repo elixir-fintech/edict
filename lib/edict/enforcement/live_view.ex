@@ -27,7 +27,8 @@ defmodule Edict.Enforcement.LiveView do
 
   A missing param yields no entity ID, so the check fails and the user is unauthorized.
 
-  After mount, every version bump for the user re-runs the same check. If it
+  After mount, every version bump for the user re-runs the same check against
+  the user's roles read from the database, not the cache. If it
   fails, `on_unauthorized` is called and must redirect the socket; if it does
   not, the LiveView raises so the client remounts and is denied.
 
@@ -38,6 +39,7 @@ defmodule Edict.Enforcement.LiveView do
 
   import Phoenix.Component, only: [assign: 3]
 
+  alias Edict.Cache.Document
   alias Edict.Enforcement.Helpers
 
   def on_mount(opts, params, _session, socket) do
@@ -48,7 +50,9 @@ defmodule Edict.Enforcement.LiveView do
     policy =
       {opts.action, opts.entity_type, entity_id(opts, params), Helpers.strong_opts!(opts)}
 
-    case authorize(socket, edict_config, user_id, policy) do
+    document = Helpers.load_document(edict_config, user_id)
+
+    case authorize(socket, edict_config, document, policy) do
       {:cont, socket} ->
         {:cont,
          socket
@@ -63,9 +67,8 @@ defmodule Edict.Enforcement.LiveView do
   defp entity_id(%{param: param}, params), do: params[param]
   defp entity_id(%{entity_from: entity_from}, params), do: entity_from.(params)
 
-  defp authorize(socket, edict_config, user_id, {action, entity_type, entity_id, strong_opts}) do
+  defp authorize(socket, edict_config, document, {action, entity_type, entity_id, strong_opts}) do
     config_module = edict_config.config_module
-    document = Helpers.load_document(edict_config, user_id)
 
     if Helpers.authorized?(edict_config, document, action, entity_type, entity_id, strong_opts) do
       {:cont, assign(socket, :current_user_roles, document)}
@@ -83,12 +86,18 @@ defmodule Edict.Enforcement.LiveView do
   end
 
   # Re-runs the mount policy on every version bump, so a LiveView whose
-  # permission was revoked stops instead of staying open.
+  # permission was revoked stops instead of staying open. The document comes
+  # straight from the DB: on a remote node this bump can arrive before
+  # PubSubListener has copied the new version into the cache, and a stale
+  # document in socket assigns would never expire.
   defp attach_version_hook(socket, edict_config, user_id, policy) do
     Phoenix.LiveView.attach_hook(socket, :edict_version_bump, :handle_info, fn
-      {:edict_version_bump, ^user_id, _new_version}, socket ->
+      {:edict_version_bump, ^user_id, new_version}, socket ->
+        document =
+          Document.new(user_id, Edict.Core.list_roles(edict_config, user_id), new_version)
+
         socket
-        |> authorize(edict_config, user_id, policy)
+        |> authorize(edict_config, document, policy)
         |> ensure_redirected()
 
       _msg, socket ->

@@ -98,6 +98,44 @@ defmodule Edict.IntegrationTest do
       assert :editor in roles
     end
 
+    # On a remote node the per-user bump can reach the LiveView before
+    # PubSubListener has copied the new version into the cache.
+    test "halts on a bump that arrives before the cache version changes", %{config: config} do
+      insert_role!("user-1", "admin", "project", "7")
+      socket = build_socket(%{current_user: %{id: "user-1"}})
+      opts = %{edict_config: config, action: :read, entity_type: :project, param: "id"}
+      {:cont, mounted_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+
+      Edict.Test.Repo.delete_all(UserRole)
+      [hook] = mounted_socket.private.lifecycle.handle_info
+
+      {:halt, result_socket} =
+        hook.function.({:edict_version_bump, "user-1", make_ref()}, mounted_socket)
+
+      assert result_socket.redirected
+    end
+
+    test "assigns roles from the DB on a bump that arrives before the cache version changes", %{
+      config: config
+    } do
+      insert_role!("user-1", "admin", "project", "7")
+      socket = build_socket(%{current_user: %{id: "user-1"}})
+      opts = %{edict_config: config, action: :read, entity_type: :project, param: "id"}
+      {:cont, mounted_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+
+      insert_role!("user-1", "editor", "project", "7")
+      [hook] = mounted_socket.private.lifecycle.handle_info
+
+      {:cont, updated_socket} =
+        hook.function.({:edict_version_bump, "user-1", make_ref()}, mounted_socket)
+
+      assert :editor in Document.roles_for(
+               updated_socket.assigns.current_user_roles,
+               :project,
+               "7"
+             )
+    end
+
     test "halts with a redirect when the mounted permission is revoked", %{
       config: config,
       cache: cache
