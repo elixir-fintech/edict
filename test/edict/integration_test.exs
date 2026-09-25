@@ -1,6 +1,8 @@
 defmodule Edict.IntegrationTest do
   use ExUnit.Case
 
+  import ExUnit.CaptureLog
+
   alias Edict.Cache.{Document, PubSubListener, Store}
   alias Edict.Enforcement.Helpers
   alias Edict.Enforcement.LiveView, as: EdictLiveView
@@ -129,6 +131,8 @@ defmodule Edict.IntegrationTest do
   end
 
   describe "load_document when the cache is not running" do
+    @describetag :capture_log
+
     test "returns the roles from the DB", %{config: config} do
       insert_role!("user-1", "admin", "project", "7")
       down_config = Map.put(config, :cache, :edict_cache_not_started)
@@ -136,6 +140,24 @@ defmodule Edict.IntegrationTest do
       doc = Helpers.load_document(down_config, "user-1")
 
       assert [:admin] = Document.roles_for(doc, :project, "7")
+    end
+
+    test "emits a cache unavailable telemetry event", %{config: config} do
+      down_config = Map.put(config, :cache, :edict_cache_not_started)
+      ref = :telemetry_test.attach_event_handlers(self(), [[:edict, :cache, :unavailable]])
+
+      Helpers.load_document(down_config, "user-1")
+
+      assert_received {[:edict, :cache, :unavailable], ^ref, %{count: 1},
+                       %{user_id: "user-1", reason: :no_cache}}
+    end
+
+    test "logs an error", %{config: config} do
+      down_config = Map.put(config, :cache, :edict_cache_not_started)
+
+      log = capture_log(fn -> Helpers.load_document(down_config, "user-1") end)
+
+      assert log =~ "Edict cache unavailable"
     end
   end
 

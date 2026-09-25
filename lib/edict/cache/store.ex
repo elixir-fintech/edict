@@ -14,6 +14,11 @@ defmodule Edict.Cache.Store do
       config :edict, ttl: :timer.minutes(15)
 
   Default: 10 minutes.
+
+  Reads return cache errors so callers can fall back to the database. Writes
+  always return `:ok`: Cachex only fails a write when the cache process is
+  down, and then its table and every document in it are gone, so there is
+  nothing stale left to correct.
   """
 
   @type version :: reference() | 0

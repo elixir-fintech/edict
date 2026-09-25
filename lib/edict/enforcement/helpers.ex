@@ -6,20 +6,23 @@ defmodule Edict.Enforcement.Helpers do
   Action resolution happens at check time using the config module.
   """
 
+  require Logger
+
   alias Edict.Cache.{Document, Store}
 
   @doc """
   Loads (or rebuilds) the authorization document for a user from cache.
 
   Returns the cached document if fresh, or rebuilds from DB if stale/missing.
-  If the cache is unavailable, builds the document from DB without caching it.
+  If the cache is unavailable, builds the document from DB without caching it,
+  emits `[:edict, :cache, :unavailable]` telemetry and logs an error.
   """
   @spec load_document(map(), String.t()) :: Document.t()
   def load_document(config, user_id) do
     case cached_document(config.cache, user_id) do
       {:ok, doc} -> doc
       :stale -> rebuild_document(config, user_id)
-      {:error, _reason} -> build_from_db(config, user_id)
+      {:error, reason} -> build_from_db(config, user_id, reason)
     end
   end
 
@@ -43,16 +46,28 @@ defmodule Edict.Enforcement.Helpers do
         Store.put_document(config.cache, user_id, doc)
         doc
 
-      {:error, _reason} ->
-        build_from_db(config, user_id)
+      {:error, reason} ->
+        build_from_db(config, user_id, reason)
     end
   end
 
   # Freshness can't be established without the cache, so the DB is the only
   # source. The document is not cached, and its unique version never matches
   # a stored one.
-  defp build_from_db(config, user_id) do
+  defp build_from_db(config, user_id, reason) do
+    report_unavailable(user_id, reason)
     Document.new(user_id, Edict.Core.list_roles(config, user_id), make_ref())
+  end
+
+  defp report_unavailable(user_id, reason) do
+    :telemetry.execute([:edict, :cache, :unavailable], %{count: 1}, %{
+      user_id: user_id,
+      reason: reason
+    })
+
+    Logger.error(
+      "Edict cache unavailable (#{inspect(reason)}); authorizing user #{user_id} from the database"
+    )
   end
 
   @doc "Check permission using an entity struct (via Edict.Entity protocol)."

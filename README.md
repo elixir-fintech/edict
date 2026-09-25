@@ -280,6 +280,13 @@ Each user has a cached authorization document containing their roles grouped by 
 
 A configurable TTL (default: 10 minutes) acts as a safety net if PubSub messages are lost.
 
+**If the cache is unavailable** (for example while Cachex restarts), permission checks build the
+document from the DB and skip caching it. Each fallback logs an error and emits a telemetry event:
+
+| Event | Measurements | Metadata |
+|---|---|---|
+| `[:edict, :cache, :unavailable]` | `%{count: 1}` | `%{user_id: String.t(), reason: term()}` |
+
 ## Testing
 
 Edict provides test helpers for convenient permission setup and assertions:
