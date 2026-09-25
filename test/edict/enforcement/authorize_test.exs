@@ -9,6 +9,7 @@ defmodule Edict.Enforcement.AuthorizeTest do
 
     authorize("delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project)
     authorize("update", action: :write, entity_from_assigns: :project_id, entity_type: :project)
+    authorize("typo", action: :aprove, entity_from_assigns: :project_id, entity_type: :project)
 
     def handle_event("delete", _params, socket) do
       {:noreply, Map.update!(socket, :assigns, &Map.put(&1, :deleted, true))}
@@ -17,6 +18,8 @@ defmodule Edict.Enforcement.AuthorizeTest do
     def handle_event("update", _params, socket) do
       {:noreply, Map.update!(socket, :assigns, &Map.put(&1, :updated, true))}
     end
+
+    def handle_event("typo", _params, socket), do: {:noreply, socket}
 
     def handle_event("ping", _params, socket) do
       {:noreply, Map.update!(socket, :assigns, &Map.put(&1, :pinged, true))}
@@ -134,6 +137,18 @@ defmodule Edict.Enforcement.AuthorizeTest do
       compile_authorize(
         ~s|authorize("delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project, strong: false)|
       )
+    end
+  end
+
+  test "an event guard raises for an action the entity type does not define", %{
+    edict_config: edict_config,
+    admin_doc: admin_doc
+  } do
+    socket =
+      build_socket(%{project_id: "7", current_user_roles: admin_doc, edict_config: edict_config})
+
+    assert_raise ArgumentError, ~r/:aprove/, fn ->
+      TestLiveView.handle_event("typo", %{}, socket)
     end
   end
 

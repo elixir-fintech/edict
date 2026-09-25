@@ -67,6 +67,12 @@ defmodule Edict.Enforcement.Authorize do
             edict_config = socket.assigns[:edict_config] || Edict.config()
             config_module = edict_config.config_module
 
+            Edict.Enforcement.Helpers.validate_action!(
+              config_module,
+              unquote(action),
+              unquote(entity_type)
+            )
+
             if Edict.Enforcement.Helpers.authorized?(
                  edict_config,
                  document,
