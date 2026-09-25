@@ -153,88 +153,17 @@ defmodule Edict.Config do
     entities = Module.get_attribute(env.module, :edict_entities)
     roles = Module.get_attribute(env.module, :edict_roles)
     role_actions = Module.get_attribute(env.module, :edict_role_actions)
-    user_from_assigns = Module.get_attribute(env.module, :edict_user_from_assigns)
-    on_unauthorized_fn = Module.get_attribute(env.module, :edict_on_unauthorized)
-    strong_actions = Module.get_attribute(env.module, :edict_strong_actions) || []
+
+    strong_actions =
+      strong_actions_or_none(Module.get_attribute(env.module, :edict_strong_actions))
+
+    user_fn = user_fn(Module.get_attribute(env.module, :edict_user_from_assigns))
+    unauthorized_fn = unauthorized_fn(Module.get_attribute(env.module, :edict_on_unauthorized))
 
     entity_type_names = Enum.map(entities, fn {name, _, _} -> name end)
 
-    # Validate that role actions reference valid entity types
-    for {role, entity_type, _actions} <- role_actions do
-      unless entity_type in entity_type_names do
-        raise CompileError,
-          description:
-            "Role #{inspect(role)} references unknown entity type #{inspect(entity_type)}. " <>
-              "Valid entity types: #{inspect(entity_type_names)}"
-      end
-    end
-
+    validate_entity_types!(role_actions, entity_type_names)
     validate_strong_actions!(strong_actions, role_actions)
-
-    # Generate actions_for/2 clauses
-    actions_for_clauses =
-      Enum.map(role_actions, fn {role, entity_type, actions} ->
-        quote do
-          def actions_for(unquote(role), unquote(entity_type)), do: unquote(actions)
-        end
-      end)
-
-    # Collect all valid actions per entity type
-    actions_by_entity_type =
-      role_actions
-      |> Enum.reduce(%{}, fn {_role, entity_type, actions}, acc ->
-        Map.update(acc, entity_type, MapSet.new(actions), &MapSet.union(&1, MapSet.new(actions)))
-      end)
-      |> Map.new(fn {et, actions} -> {et, MapSet.to_list(actions)} end)
-
-    valid_action_clauses =
-      Enum.flat_map(actions_by_entity_type, fn {entity_type, actions} ->
-        Enum.map(actions, fn action ->
-          quote do
-            def valid_action?(unquote(action), unquote(entity_type)), do: true
-          end
-        end)
-      end)
-
-    # Generate protocol implementations
-    protocol_impls =
-      entities
-      |> Enum.filter(fn {_name, struct_mod, _id_field} -> struct_mod != nil end)
-      |> Enum.map(fn {name, struct_mod, id_field} ->
-        quote do
-          defimpl Edict.Entity, for: unquote(struct_mod) do
-            def entity_id(entity), do: to_string(Map.get(entity, unquote(id_field)))
-            def entity_type(_entity), do: unquote(name)
-          end
-        end
-      end)
-
-    # Default user_from_assigns
-    user_fn =
-      if user_from_assigns do
-        user_from_assigns
-      else
-        quote(do: fn assigns -> assigns.current_user.id end)
-      end
-
-    # Default on_unauthorized — 403 for Plug.Conn, redirect for LiveView.Socket
-    unauthorized_fn =
-      if on_unauthorized_fn do
-        on_unauthorized_fn
-      else
-        quote do
-          fn
-            %Plug.Conn{} = conn, _context ->
-              conn
-              |> Plug.Conn.put_resp_content_type("text/plain")
-              |> Plug.Conn.send_resp(403, "Forbidden")
-              |> Plug.Conn.halt()
-
-            %Phoenix.LiveView.Socket{} = socket, _context ->
-              Phoenix.LiveView.redirect(socket, to: "/")
-          end
-        end
-      end
 
     quote do
       @doc "Returns the list of valid entity types."
@@ -246,12 +175,12 @@ defmodule Edict.Config do
       @doc "Returns `true` if the given role is defined."
       def valid_role?(role), do: role in unquote(roles)
 
-      unquote_splicing(actions_for_clauses)
+      unquote_splicing(actions_for_clauses(role_actions))
 
       @doc "Returns the actions a role grants on an entity type. Returns `[]` for undefined combinations."
       def actions_for(_role, _entity_type), do: []
 
-      unquote_splicing(valid_action_clauses)
+      unquote_splicing(valid_action_clauses(role_actions))
 
       @doc "Returns `true` if the action is valid for the given entity type."
       def valid_action?(_action, _entity_type), do: false
@@ -265,10 +194,79 @@ defmodule Edict.Config do
       @doc "Returns the configured unauthorized handler function."
       def on_unauthorized, do: unquote(unauthorized_fn)
 
-      # Protocol implementations
-      unquote_splicing(protocol_impls)
+      unquote_splicing(protocol_impls(entities))
     end
   end
+
+  # The functions below run at compile time, from __before_compile__/1.
+
+  defp validate_entity_types!(role_actions, entity_type_names) do
+    for {role, entity_type, _actions} <- role_actions, entity_type not in entity_type_names do
+      raise CompileError,
+        description:
+          "Role #{inspect(role)} references unknown entity type #{inspect(entity_type)}. " <>
+            "Valid entity types: #{inspect(entity_type_names)}"
+    end
+
+    :ok
+  end
+
+  defp actions_for_clauses(role_actions) do
+    Enum.map(role_actions, fn {role, entity_type, actions} ->
+      quote do
+        def actions_for(unquote(role), unquote(entity_type)), do: unquote(actions)
+      end
+    end)
+  end
+
+  # One valid_action?/2 clause per action any role grants on an entity type
+  defp valid_action_clauses(role_actions) do
+    role_actions
+    |> Enum.flat_map(fn {_role, entity_type, actions} ->
+      Enum.map(actions, &{&1, entity_type})
+    end)
+    |> Enum.uniq()
+    |> Enum.map(fn {action, entity_type} ->
+      quote do
+        def valid_action?(unquote(action), unquote(entity_type)), do: true
+      end
+    end)
+  end
+
+  defp protocol_impls(entities) do
+    for {name, struct_mod, id_field} <- entities, struct_mod != nil do
+      quote do
+        defimpl Edict.Entity, for: unquote(struct_mod) do
+          def entity_id(entity), do: to_string(Map.get(entity, unquote(id_field)))
+          def entity_type(_entity), do: unquote(name)
+        end
+      end
+    end
+  end
+
+  defp strong_actions_or_none(nil), do: []
+  defp strong_actions_or_none(strong_actions), do: strong_actions
+
+  defp user_fn(nil), do: quote(do: fn assigns -> assigns.current_user.id end)
+  defp user_fn(user_from_assigns), do: user_from_assigns
+
+  # Default on_unauthorized: 403 for Plug.Conn, redirect for LiveView.Socket
+  defp unauthorized_fn(nil) do
+    quote do
+      fn
+        %Plug.Conn{} = conn, _context ->
+          conn
+          |> Plug.Conn.put_resp_content_type("text/plain")
+          |> Plug.Conn.send_resp(403, "Forbidden")
+          |> Plug.Conn.halt()
+
+        %Phoenix.LiveView.Socket{} = socket, _context ->
+          Phoenix.LiveView.redirect(socket, to: "/")
+      end
+    end
+  end
+
+  defp unauthorized_fn(on_unauthorized), do: on_unauthorized
 
   defp validate_strong_actions!(strong_actions, role_actions) do
     granted = Enum.flat_map(role_actions, fn {_role, _entity_type, actions} -> actions end)
