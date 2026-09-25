@@ -21,9 +21,17 @@ defmodule Edict.Enforcement.Authorize do
   registers an `on_mount` hook that attaches a `:handle_event` hook: for every
   declared event, the permission is checked against `current_user_roles`
   before your `handle_event/3` runs. A denied event calls `on_unauthorized` and
-  never reaches it; undeclared events pass through. `handle_event` hooks
-  attached before this one (for example by a `live_session` `on_mount`) still
-  see declared events first. LiveComponents are not supported.
+  never reaches it; undeclared events pass through. LiveComponents are not
+  supported.
+
+  > #### Earlier hooks run first {: .warning}
+  >
+  > LiveView runs `handle_event` hooks in the order they were attached, and
+  > this one is attached by the LiveView's own `on_mount`. Hooks attached
+  > before it, for example by `live_session` `on_mount` callbacks, see declared
+  > events first and can act on them or halt them. They must never perform or
+  > authorize protected operations: keep protected work in the LiveView's
+  > `handle_event/3`, which always runs after every hook.
 
   `:action`, `:entity_from_assigns` and `:entity_type` are required; a missing
   one fails compilation, and so does declaring an event twice or naming it
@@ -40,9 +48,7 @@ defmodule Edict.Enforcement.Authorize do
 
   defmacro __using__(_opts) do
     quote do
-      # :phoenix_live_mount is registered by `use Phoenix.LiveView` (a LiveView
-      # internal), and on_mount/1 below accumulates into it.
-      unless Module.has_attribute?(__MODULE__, :phoenix_live_mount) do
+      unless Phoenix.LiveView in Module.get_attribute(__MODULE__, :behaviour, []) do
         raise CompileError,
           description:
             "use Edict.Enforcement.Authorize must come after use Phoenix.LiveView " <>

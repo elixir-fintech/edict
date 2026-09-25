@@ -248,6 +248,8 @@ end
 
 `action:`, `entity_from_assigns:` and `entity_type:` are all required; leaving one out, or declaring an event twice, fails compilation. `use Edict.Enforcement.Authorize` must come after `use Phoenix.LiveView` (here via `use MyAppWeb, :live_view`): it attaches a `handle_event` hook that checks each declared event before your handler runs.
 
+**Earlier hooks run first:** `handle_event` hooks attached before Edict's, for example by `live_session` `on_mount` callbacks, see declared events before they are authorized. Such hooks must never perform or authorize protected operations; keep protected work in `handle_event/3`, which always runs after every hook.
+
 ### In templates
 
 ```elixir
