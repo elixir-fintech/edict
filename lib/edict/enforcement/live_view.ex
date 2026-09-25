@@ -21,6 +21,9 @@ defmodule Edict.Enforcement.LiveView do
       Must be a remote capture (`&MyModule.fun/1`), since `on_mount` options are
       stored at compile time and anonymous functions cannot be
     * `:edict_config` — (optional) override config map. Defaults to app env via `Edict.config/0`
+    * `:strong` — (optional) `false` to check a strong action against the cached
+      document. Strong actions (see `Edict.Config.strong_actions/1`) are otherwise
+      always checked against the database
 
   A missing param yields no entity ID, so the check fails and the user is unauthorized.
 
@@ -37,7 +40,9 @@ defmodule Edict.Enforcement.LiveView do
     opts = Map.new(opts)
     edict_config = opts[:edict_config] || socket.assigns[:edict_config] || Edict.config()
     user_id = edict_config.config_module.user_id_from_assigns(socket.assigns) |> to_string()
-    policy = {opts.action, opts.entity_type, entity_id(opts, params)}
+
+    policy =
+      {opts.action, opts.entity_type, entity_id(opts, params), Helpers.strong_opts!(opts)}
 
     case authorize(socket, edict_config, user_id, policy) do
       {:cont, socket} ->
@@ -54,11 +59,11 @@ defmodule Edict.Enforcement.LiveView do
   defp entity_id(%{param: param}, params), do: params[param]
   defp entity_id(%{entity_from: entity_from}, params), do: entity_from.(params)
 
-  defp authorize(socket, edict_config, user_id, {action, entity_type, entity_id}) do
+  defp authorize(socket, edict_config, user_id, {action, entity_type, entity_id, strong_opts}) do
     config_module = edict_config.config_module
     document = Helpers.load_document(edict_config, user_id)
 
-    if Helpers.can?(document, action, entity_type, entity_id, config_module) do
+    if Helpers.authorized?(edict_config, document, action, entity_type, entity_id, strong_opts) do
       {:cont, assign(socket, :current_user_roles, document)}
     else
       {:halt, config_module.on_unauthorized().(socket, %{})}

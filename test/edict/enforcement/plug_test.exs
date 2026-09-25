@@ -127,4 +127,10 @@ defmodule Edict.Enforcement.PlugTest do
     assert result.halted
     refute result.assigns[:downstream_ran]
   end
+
+  test "init rejects strong: true" do
+    assert_raise ArgumentError, ~r/:strong/, fn ->
+      EdictPlug.init(action: :read, entity_type: :project, param: "id", strong: true)
+    end
+  end
 end

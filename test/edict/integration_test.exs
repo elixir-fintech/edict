@@ -161,6 +161,94 @@ defmodule Edict.IntegrationTest do
     end
   end
 
+  describe "strong actions in Plug and LiveView" do
+    setup %{config: config} do
+      insert_role!("alice", "treasurer", "account", "7")
+      strong_config = Map.put(config, :config_module, Edict.Test.StrongConfig)
+      # Document.new/3 only keeps roles whose atoms exist, and they exist once
+      # the config module is loaded; nothing else loads it before priming
+      Code.ensure_loaded!(Edict.Test.StrongConfig)
+      # Prime the cache, then revoke without notifying it: a stale cache
+      Helpers.load_document(strong_config, "alice")
+      Edict.Test.Repo.delete_all(UserRole)
+
+      %{strong_config: strong_config}
+    end
+
+    test "Plug denies a strong action revoked in the DB", %{strong_config: strong_config} do
+      opts =
+        EdictPlug.init(
+          edict_config: strong_config,
+          action: :approve_transfer,
+          entity_type: :account,
+          param: "id"
+        )
+
+      conn =
+        Plug.Test.conn(:post, "/accounts/7/approve", %{})
+        |> Map.put(:params, %{"id" => "7"})
+        |> Plug.Conn.assign(:current_user, %{id: "alice"})
+
+      result = EdictPlug.call(conn, opts)
+
+      assert result.halted
+      assert result.status == 403
+    end
+
+    test "Plug with strong: false allows from the stale cache", %{strong_config: strong_config} do
+      opts =
+        EdictPlug.init(
+          edict_config: strong_config,
+          action: :approve_transfer,
+          entity_type: :account,
+          param: "id",
+          strong: false
+        )
+
+      conn =
+        Plug.Test.conn(:post, "/accounts/7/approve", %{})
+        |> Map.put(:params, %{"id" => "7"})
+        |> Plug.Conn.assign(:current_user, %{id: "alice"})
+
+      result = EdictPlug.call(conn, opts)
+
+      refute result.halted
+    end
+
+    test "LiveView mount halts on a strong action revoked in the DB", %{
+      strong_config: strong_config
+    } do
+      socket = build_socket(%{current_user: %{id: "alice"}})
+
+      opts = %{
+        edict_config: strong_config,
+        action: :approve_transfer,
+        entity_type: :account,
+        param: "id"
+      }
+
+      {:halt, result_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+
+      assert result_socket.redirected
+    end
+
+    test "LiveView mount with strong: false continues from the stale cache", %{
+      strong_config: strong_config
+    } do
+      socket = build_socket(%{current_user: %{id: "alice"}})
+
+      opts = %{
+        edict_config: strong_config,
+        action: :approve_transfer,
+        entity_type: :account,
+        param: "id",
+        strong: false
+      }
+
+      assert {:cont, _socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+    end
+  end
+
   # T6 — Plug and LiveView with DB-backed state (cold cache)
   describe "Plug integration with DB" do
     test "loads document from DB on cold cache", %{config: config} do
