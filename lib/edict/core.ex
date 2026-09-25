@@ -2,6 +2,8 @@ defmodule Edict.Core do
   @moduledoc """
   Core operations for managing role assignments.
 
+  Writes roles to the DB; every change is followed by `Edict.Invalidator.invalidate/2`.
+
   All functions take a config map with:
   - `:repo` — the Ecto repo
   - `:cache` — the Cachex instance name
@@ -12,9 +14,7 @@ defmodule Edict.Core do
 
   import Ecto.Query
 
-  require Logger
-
-  alias Edict.Cache.Store
+  alias Edict.Invalidator
   alias Edict.Schema.UserRole
 
   @insert_ignoring_duplicates [
@@ -94,7 +94,7 @@ defmodule Edict.Core do
 
     {count, _} = config.repo.delete_all(query)
 
-    if count > 0, do: invalidate(config, user_id)
+    if count > 0, do: Invalidator.invalidate(config, user_id)
 
     {:ok, count}
   end
@@ -113,7 +113,7 @@ defmodule Edict.Core do
 
     user_ids
     |> Enum.uniq()
-    |> Enum.each(&invalidate(config, &1))
+    |> Enum.each(&Invalidator.invalidate(config, &1))
 
     {:ok, count}
   end
@@ -149,7 +149,7 @@ defmodule Edict.Core do
       {count, user_roles} =
         config.repo.insert_all(UserRole, entries, @insert_ignoring_duplicates)
 
-      if count > 0, do: invalidate(config, user_id)
+      if count > 0, do: Invalidator.invalidate(config, user_id)
       {:ok, user_roles}
     end
   end
@@ -186,43 +186,6 @@ defmodule Edict.Core do
   def changed?({:error, _reason}), do: false
 
   defp invalidate_if_changed(config, user_id, result) do
-    if changed?(result), do: invalidate(config, user_id)
-  end
-
-  @doc """
-  Invalidates a user's cached document: bumps the version and broadcasts it
-  to other nodes and the user's LiveViews.
-
-  Always returns `:ok`: the DB change has already committed, so a failed
-  broadcast is reported, not returned. Each failure emits
-  `[:edict, :invalidation, :broadcast_failed]` and logs an error.
-  """
-  @spec invalidate(map(), String.t()) :: :ok
-  def invalidate(config, user_id) do
-    {:ok, new_version} = Store.bump_version(config.cache, user_id)
-    message = {:edict_version_bump, user_id, new_version}
-
-    # Global topic for PubSubListener (cross-node cache invalidation) and the
-    # per-user topic for LiveView hooks. Both are always attempted; the DB change
-    # has already committed, so a failure is reported, not rolled back.
-    Enum.each(
-      [config.topic, "edict:user:#{user_id}"],
-      &broadcast(config.pubsub, &1, user_id, message)
-    )
-  end
-
-  defp broadcast(pubsub, topic, user_id, message) do
-    with {:error, reason} <- Phoenix.PubSub.broadcast(pubsub, topic, message) do
-      :telemetry.execute([:edict, :invalidation, :broadcast_failed], %{count: 1}, %{
-        user_id: user_id,
-        topic: topic,
-        reason: reason
-      })
-
-      Logger.error(
-        "Edict invalidation broadcast failed on #{topic} (#{inspect(reason)}); " <>
-          "other nodes may serve user #{user_id}'s old roles until the TTL expires"
-      )
-    end
+    if changed?(result), do: Invalidator.invalidate(config, user_id)
   end
 end

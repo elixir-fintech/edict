@@ -21,6 +21,7 @@ defmodule Edict.Multi do
 
   alias Ecto.Multi
   alias Edict.Core
+  alias Edict.Invalidator
 
   @marker {__MODULE__, :run_by_edict}
 
@@ -71,7 +72,7 @@ defmodule Edict.Multi do
     |> config.repo.transaction()
     |> case do
       {:ok, changes} ->
-        changes |> changed_user_ids() |> Enum.each(&Core.invalidate(config, &1))
+        changes |> changed_user_ids() |> Enum.each(&Invalidator.invalidate(config, &1))
         {:ok, unwrap(changes)}
 
       {:error, name, value, changes} ->
