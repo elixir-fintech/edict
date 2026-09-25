@@ -146,10 +146,10 @@ defmodule Edict.Core do
           {:ok, [UserRole.t()]} | {:error, Ecto.Changeset.t()}
   def assign_roles(config, user_id, role, entities) do
     with {:ok, entries} <- build_entries(user_id, role, entities, DateTime.utc_now()) do
-      {_count, user_roles} =
+      {count, user_roles} =
         config.repo.insert_all(UserRole, entries, @insert_ignoring_duplicates)
 
-      invalidate(config, user_id)
+      if count > 0, do: invalidate(config, user_id)
       {:ok, user_roles}
     end
   end
@@ -192,8 +192,12 @@ defmodule Edict.Core do
   @doc """
   Invalidates a user's cached document: bumps the version and broadcasts it
   to other nodes and the user's LiveViews.
+
+  Always returns `:ok`: the DB change has already committed, so a failed
+  broadcast is reported, not returned. Each failure emits
+  `[:edict, :invalidation, :broadcast_failed]` and logs an error.
   """
-  @spec invalidate(map(), String.t()) :: :ok | {:error, term()}
+  @spec invalidate(map(), String.t()) :: :ok
   def invalidate(config, user_id) do
     {:ok, new_version} = Store.bump_version(config.cache, user_id)
     message = {:edict_version_bump, user_id, new_version}
@@ -201,13 +205,14 @@ defmodule Edict.Core do
     # Global topic for PubSubListener (cross-node cache invalidation) and the
     # per-user topic for LiveView hooks. Both are always attempted; the DB change
     # has already committed, so a failure is reported, not rolled back.
-    [config.topic, "edict:user:#{user_id}"]
-    |> Enum.map(&broadcast(config.pubsub, &1, user_id, message))
-    |> Enum.find(:ok, &match?({:error, _}, &1))
+    Enum.each(
+      [config.topic, "edict:user:#{user_id}"],
+      &broadcast(config.pubsub, &1, user_id, message)
+    )
   end
 
   defp broadcast(pubsub, topic, user_id, message) do
-    with {:error, reason} = error <- Phoenix.PubSub.broadcast(pubsub, topic, message) do
+    with {:error, reason} <- Phoenix.PubSub.broadcast(pubsub, topic, message) do
       :telemetry.execute([:edict, :invalidation, :broadcast_failed], %{count: 1}, %{
         user_id: user_id,
         topic: topic,
@@ -218,8 +223,6 @@ defmodule Edict.Core do
         "Edict invalidation broadcast failed on #{topic} (#{inspect(reason)}); " <>
           "other nodes may serve user #{user_id}'s old roles until the TTL expires"
       )
-
-      error
     end
   end
 end

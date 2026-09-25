@@ -192,6 +192,27 @@ defmodule Edict.CoreTest do
       assert length(db_roles) == 2
     end
 
+    test "does not invalidate when every role is already assigned", %{
+      config: config,
+      pubsub: pubsub
+    } do
+      entities = [{"organization", "42"}, {"team", "10"}]
+      {:ok, _} = Core.assign_roles(config, "user-1", "admin", entities)
+      Phoenix.PubSub.subscribe(pubsub, "edict:user:user-1")
+
+      {:ok, _} = Core.assign_roles(config, "user-1", "admin", entities)
+
+      refute_received {:edict_version_bump, "user-1", _version}
+    end
+
+    test "does not invalidate for an empty entity list", %{config: config, pubsub: pubsub} do
+      Phoenix.PubSub.subscribe(pubsub, "edict:user:user-1")
+
+      {:ok, []} = Core.assign_roles(config, "user-1", "admin", [])
+
+      refute_received {:edict_version_bump, "user-1", _version}
+    end
+
     test "rejects a blank entity ID", %{config: config} do
       entities = [{"organization", "42"}, {"project", ""}]
 
@@ -246,8 +267,8 @@ defmodule Edict.CoreTest do
       %{failing_config: Map.put(config, :pubsub, failing_pubsub)}
     end
 
-    test "returns the broadcast error", %{failing_config: failing_config} do
-      assert {:error, :down} = Core.invalidate(failing_config, "user-1")
+    test "returns :ok, since the DB change has committed", %{failing_config: failing_config} do
+      assert :ok = Core.invalidate(failing_config, "user-1")
     end
 
     test "emits a broadcast failed telemetry event", %{failing_config: failing_config} do
