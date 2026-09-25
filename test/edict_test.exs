@@ -222,9 +222,19 @@ defmodule EdictTest do
     test "raises when options are passed instead of an entity ID" do
       doc = %Edict.Cache.Document{user_id: "user-1", version: 1, roles: %{}}
 
-      assert_raise FunctionClauseError, fn ->
+      assert_raise ArgumentError, ~r/entity ID/, fn ->
         Edict.can?(doc, :read, :project, strong: false)
       end
+    end
+
+    test "denies an array entity ID instead of raising" do
+      doc = %Edict.Cache.Document{
+        user_id: "user-1",
+        version: 1,
+        roles: %{{:project, "78"} => [:admin]}
+      }
+
+      refute Edict.can?(doc, :read, :project, ["7", "8"])
     end
   end
 end

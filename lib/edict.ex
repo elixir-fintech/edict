@@ -200,9 +200,18 @@ defmodule Edict do
     can?(document, action, entity_type, entity_id, opts)
   end
 
-  def can?(document, action, entity_type, entity_id)
-      when is_atom(entity_type) and not is_list(entity_id),
-      do: can?(document, action, entity_type, entity_id, [])
+  # A keyword list here is options passed in place of the entity ID. A request
+  # param is never a list with atom keys, so an array param still reaches the
+  # clause below and is denied.
+  def can?(_document, _action, entity_type, [{key, _value} | _])
+      when is_atom(entity_type) and is_atom(key) do
+    raise ArgumentError,
+          "Edict.can?/4 got options where the entity ID belongs; " <>
+            "pass the entity ID, then options"
+  end
+
+  def can?(document, action, entity_type, entity_id) when is_atom(entity_type),
+    do: can?(document, action, entity_type, entity_id, [])
 
   @doc "Check permission using entity_type and entity_id directly, with options."
   @spec can?(Document.t(), atom(), atom(), id(), keyword()) :: boolean()
