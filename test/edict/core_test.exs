@@ -177,6 +177,43 @@ defmodule Edict.CoreTest do
       db_roles = Edict.Test.Repo.all(UserRole)
       assert length(db_roles) == 2
     end
+
+    test "rejects a blank entity ID", %{config: config} do
+      entities = [{"organization", "42"}, {"project", ""}]
+
+      assert {:error, %Ecto.Changeset{}} = Core.assign_roles(config, "user-1", "admin", entities)
+    end
+
+    test "inserts nothing when any entity ID is blank", %{config: config} do
+      entities = [{"organization", "42"}, {"project", ""}]
+
+      Core.assign_roles(config, "user-1", "admin", entities)
+
+      assert Edict.Test.Repo.all(UserRole) == []
+    end
+
+    test "rejects a blank user ID", %{config: config} do
+      entities = [{"organization", "42"}]
+
+      assert {:error, %Ecto.Changeset{}} = Core.assign_roles(config, "", "admin", entities)
+    end
+  end
+
+  describe "user_roles table" do
+    test "rejects a blank entity ID written directly" do
+      entry = %{
+        id: Ecto.UUID.generate(),
+        user_id: "user-1",
+        entity_type: "project",
+        entity_id: "",
+        role: "admin",
+        inserted_at: DateTime.utc_now()
+      }
+
+      assert_raise Postgrex.Error, ~r/user_roles_entity_id_not_blank/, fn ->
+        Edict.Test.Repo.insert_all(UserRole, [entry])
+      end
+    end
   end
 
   describe "revoke_entity/3 PubSub" do

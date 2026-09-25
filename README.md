@@ -34,6 +34,15 @@ mix edict.install
 mix ecto.migrate
 ```
 
+The migration adds `CHECK` constraints that reject blank identity columns. If you generated
+the migration with an earlier Edict version, add them in a new migration:
+
+```elixir
+for column <- [:user_id, :entity_type, :entity_id, :role] do
+  create constraint(:user_roles, :"user_roles_#{column}_not_blank", check: "#{column} <> ''")
+end
+```
+
 ## Configuration
 
 ```elixir
@@ -73,7 +82,8 @@ defmodule MyApp.AuthConfig do
   # Default: fn assigns -> assigns.current_user.id end
   user_from_assigns fn assigns -> assigns.current_user.id end
 
-  # Optional: customize unauthorized behavior for Plug and LiveView
+  # Optional: customize unauthorized behavior for Plug and LiveView.
+  # Edict halts the conn after this runs, so it only builds the response.
   on_unauthorized fn
     %Plug.Conn{} = conn, _context ->
       conn
@@ -186,6 +196,8 @@ end
 ```
 
 On success, the authorization document is stored in `conn.assigns.current_user_roles`.
+On denial, Edict calls `on_unauthorized` and then halts the connection itself. A missing
+param or blank entity ID is always denied.
 
 `param:` names the request param holding the entity ID. When the ID needs custom extraction,
 pass `entity_from:` instead. Plug and `on_mount` options are stored at compile time, so it must
@@ -228,6 +240,8 @@ defmodule MyAppWeb.ProjectLive.Show do
   end
 end
 ```
+
+`action:`, `entity_from_assigns:` and `entity_type:` are all required; leaving one out fails compilation.
 
 ### In templates
 

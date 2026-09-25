@@ -20,7 +20,9 @@ defmodule Edict.Enforcement.LiveViewTest do
       user_id: "user-1",
       version: 1,
       roles: %{
-        {:project, "7"} => [:admin]
+        {:project, "7"} => [:admin],
+        # A blank entity ID must never match a request missing its param
+        {:project, ""} => [:admin]
       }
     }
 
@@ -110,6 +112,28 @@ defmodule Edict.Enforcement.LiveViewTest do
       |> Map.put(:action, :billing)
 
     {:halt, result_socket} = EdictLiveView.on_mount(param_opts, params, %{}, socket)
+
+    assert result_socket.redirected
+  end
+
+  test "version bump hook passes unrelated messages through", %{
+    opts: opts,
+    socket: socket,
+    params: params
+  } do
+    {:cont, mounted_socket} = EdictLiveView.on_mount(opts, params, %{}, socket)
+    [hook] = mounted_socket.private.lifecycle.handle_info
+
+    assert {:cont, ^mounted_socket} = hook.function.(:unrelated_message, mounted_socket)
+  end
+
+  test "user with a role on a blank entity is halted when the param is missing", %{
+    opts: opts,
+    socket: socket
+  } do
+    param_opts = opts |> Map.delete(:entity_from) |> Map.put(:param, "id")
+
+    {:halt, result_socket} = EdictLiveView.on_mount(param_opts, %{}, %{}, socket)
 
     assert result_socket.redirected
   end

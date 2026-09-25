@@ -20,7 +20,9 @@ defmodule Edict.Enforcement.PlugTest do
       user_id: "user-1",
       version: 1,
       roles: %{
-        {:project, "7"} => [:admin]
+        {:project, "7"} => [:admin],
+        # A blank entity ID must never match a request missing its param
+        {:project, ""} => [:admin]
       }
     }
 
@@ -92,5 +94,37 @@ defmodule Edict.Enforcement.PlugTest do
 
     assert result.halted
     assert result.status == 403
+  end
+
+  test "user with a role on a blank entity is halted when the param is missing", %{
+    edict_config: edict_config
+  } do
+    conn =
+      Plug.Test.conn(:get, "/projects", %{})
+      |> Map.put(:params, %{})
+      |> Plug.Conn.assign(:current_user, %{id: "user-1"})
+      |> Plug.Conn.assign(:edict_config, edict_config)
+
+    result = Edict.Test.ReadProjectPipeline.call(conn, [])
+
+    assert result.halted
+    assert result.status == 403
+  end
+
+  test "unauthorized request is halted when on_unauthorized does not halt", %{
+    edict_config: edict_config
+  } do
+    non_halting_config = Map.put(edict_config, :config_module, Edict.Test.NonHaltingConfig)
+
+    conn =
+      Plug.Test.conn(:get, "/projects/7", %{})
+      |> Map.put(:params, %{"project_id" => "7"})
+      |> Plug.Conn.assign(:current_user, %{id: "user-1"})
+      |> Plug.Conn.assign(:edict_config, non_halting_config)
+
+    result = Edict.Test.BillingProjectThenMarkPipeline.call(conn, [])
+
+    assert result.halted
+    refute result.assigns[:downstream_ran]
   end
 end

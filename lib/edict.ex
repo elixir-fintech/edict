@@ -57,7 +57,8 @@ defmodule Edict do
 
   @doc "Assigns a role to a user on an entity."
   @spec assign_role(id(), atom(), atom(), id()) ::
-          {:ok, Edict.Schema.UserRole.t() | :already_assigned} | {:error, atom()}
+          {:ok, Edict.Schema.UserRole.t() | :already_assigned}
+          | {:error, atom() | Ecto.Changeset.t()}
   def assign_role(user_id, role, entity_type, entity_id) do
     conf = write_config!()
 
@@ -123,7 +124,7 @@ defmodule Edict do
 
   @doc "Assigns a role to a user across multiple entities."
   @spec assign_roles(id(), atom(), [{atom(), id()}]) ::
-          {:ok, [Edict.Schema.UserRole.t()]} | {:error, atom()}
+          {:ok, [Edict.Schema.UserRole.t()]} | {:error, atom() | Ecto.Changeset.t()}
   def assign_roles(user_id, role, entities) do
     conf = write_config!()
 

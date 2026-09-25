@@ -49,10 +49,18 @@ defmodule Edict.Enforcement.Helpers do
     can?(document, action, entity_type, entity_id, config_module)
   end
 
-  @doc "Check permission using entity_type and entity_id directly."
-  @spec can?(Document.t(), atom(), atom(), String.t(), module()) :: boolean()
+  @doc """
+  Check permission using entity_type and entity_id directly.
+
+  A `nil` or blank entity ID, such as a missing request param, is always denied.
+  """
+  @spec can?(Document.t(), atom(), atom(), term(), module()) :: boolean()
+  def can?(_document, _action, _entity_type, entity_id, _config_module)
+      when entity_id in [nil, ""],
+      do: false
+
   def can?(document, action, entity_type, entity_id, config_module) do
-    roles = Document.roles_for(document, entity_type, entity_id)
+    roles = Document.roles_for(document, entity_type, to_string(entity_id))
 
     Enum.any?(roles, fn role ->
       action in config_module.actions_for(role, entity_type)

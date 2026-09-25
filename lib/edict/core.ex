@@ -38,20 +38,10 @@ defmodule Edict.Core do
   @spec insert_role(map(), String.t(), String.t(), String.t(), String.t()) ::
           {:ok, UserRole.t() | :already_assigned} | {:error, Ecto.Changeset.t()}
   def insert_role(config, user_id, role, entity_type, entity_id) do
-    attrs = %{
-      user_id: user_id,
-      entity_type: entity_type,
-      entity_id: entity_id,
-      role: role
-    }
-
     # insert_all reports the rows actually inserted. Repo.insert can't detect
     # the conflict: the binary_id is generated client-side, so the returned
     # struct carries an id even when no row was written.
-    with {:ok, _user_role} <-
-           %UserRole{} |> UserRole.changeset(attrs) |> Ecto.Changeset.apply_action(:insert) do
-      entry = Map.merge(attrs, %{id: Ecto.UUID.generate(), inserted_at: DateTime.utc_now()})
-
+    with {:ok, entry} <- build_entry(user_id, role, {entity_type, entity_id}, DateTime.utc_now()) do
       case config.repo.insert_all(UserRole, [entry], @insert_ignoring_duplicates) do
         {0, []} -> {:ok, :already_assigned}
         {1, [user_role]} -> {:ok, user_role}
@@ -143,28 +133,47 @@ defmodule Edict.Core do
     |> config.repo.all()
   end
 
-  @doc "Assigns a role to a user across multiple entities. Expects pre-validated, string arguments."
+  @doc """
+  Assigns a role to a user across multiple entities.
+
+  Every entry is validated like a single assignment. If any is invalid,
+  nothing is inserted and its changeset is returned.
+  """
   @spec assign_roles(map(), String.t(), String.t(), [{String.t(), String.t()}]) ::
-          {:ok, [UserRole.t()]}
+          {:ok, [UserRole.t()]} | {:error, Ecto.Changeset.t()}
   def assign_roles(config, user_id, role, entities) do
-    now = DateTime.utc_now()
+    with {:ok, entries} <- build_entries(user_id, role, entities, DateTime.utc_now()) do
+      {_count, user_roles} =
+        config.repo.insert_all(UserRole, entries, @insert_ignoring_duplicates)
 
-    entries =
-      Enum.map(entities, fn {entity_type, entity_id} ->
-        %{
-          id: Ecto.UUID.generate(),
-          user_id: user_id,
-          entity_type: entity_type,
-          entity_id: entity_id,
-          role: role,
-          inserted_at: now
-        }
-      end)
+      invalidate(config, user_id)
+      {:ok, user_roles}
+    end
+  end
 
-    {_count, user_roles} = config.repo.insert_all(UserRole, entries, @insert_ignoring_duplicates)
+  defp build_entries(user_id, role, entities, now) do
+    entities
+    |> Enum.reduce_while({:ok, []}, fn entity, {:ok, entries} ->
+      case build_entry(user_id, role, entity, now) do
+        {:ok, entry} -> {:cont, {:ok, [entry | entries]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, entries} -> {:ok, Enum.reverse(entries)}
+      error -> error
+    end
+  end
 
-    invalidate(config, user_id)
-    {:ok, user_roles}
+  # Every write goes through the changeset, so single and bulk inserts
+  # share one invariant.
+  defp build_entry(user_id, role, {entity_type, entity_id}, now) do
+    attrs = %{user_id: user_id, entity_type: entity_type, entity_id: entity_id, role: role}
+
+    with {:ok, _user_role} <-
+           %UserRole{} |> UserRole.changeset(attrs) |> Ecto.Changeset.apply_action(:insert) do
+      {:ok, Map.merge(attrs, %{id: Ecto.UUID.generate(), inserted_at: now})}
+    end
   end
 
   @doc "Returns whether the result of `insert_role/5` or `delete_role/5` changed a role."

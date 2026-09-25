@@ -15,5 +15,10 @@ defmodule <%= @repo_module %>.Migrations.CreateEdictUserRoles do
     create unique_index(:user_roles, [:user_id, :entity_type, :entity_id, :role])
     create index(:user_roles, [:user_id])
     create index(:user_roles, [:entity_type, :entity_id])
+
+    # A blank identity could match a request missing its entity param
+    for column <- [:user_id, :entity_type, :entity_id, :role] do
+      create constraint(:user_roles, :"user_roles_#{column}_not_blank", check: "#{column} <> ''")
+    end
   end
 end

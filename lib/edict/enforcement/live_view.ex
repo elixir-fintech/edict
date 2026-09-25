@@ -35,7 +35,7 @@ defmodule Edict.Enforcement.LiveView do
     config_module = edict_config.config_module
     user_id = config_module.user_id_from_assigns(socket.assigns) |> to_string()
     entity_type = opts.entity_type
-    entity_id = opts |> entity_id(params) |> to_string()
+    entity_id = entity_id(opts, params)
 
     document = Helpers.load_document(edict_config, user_id)
 
@@ -69,6 +69,9 @@ defmodule Edict.Enforcement.LiveView do
       {:edict_version_bump, user_id, _new_version}, socket ->
         doc = Helpers.load_document(edict_config, user_id)
         {:cont, assign(socket, :current_user_roles, doc)}
+
+      _msg, socket ->
+        {:cont, socket}
     end)
   end
 end

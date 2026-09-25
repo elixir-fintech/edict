@@ -98,4 +98,38 @@ defmodule Edict.Enforcement.AuthorizeTest do
       private: %{live_temp: %{}, lifecycle: %Phoenix.LiveView.Lifecycle{}}
     }
   end
+
+  test "authorize without :action fails to compile" do
+    assert_raise ArgumentError, ~r/:action/, fn ->
+      compile_authorize(
+        ~s|authorize("delete", entity_from_assigns: :project_id, entity_type: :project)|
+      )
+    end
+  end
+
+  test "authorize without :entity_from_assigns fails to compile" do
+    assert_raise ArgumentError, ~r/:entity_from_assigns/, fn ->
+      compile_authorize(~s|authorize("delete", action: :delete, entity_type: :project)|)
+    end
+  end
+
+  test "authorize without :entity_type fails to compile" do
+    assert_raise ArgumentError, ~r/:entity_type/, fn ->
+      compile_authorize(
+        ~s|authorize("delete", action: :delete, entity_from_assigns: :project_id)|
+      )
+    end
+  end
+
+  defp compile_authorize(declaration) do
+    module = "Edict.AuthorizeTest.Compiled#{System.unique_integer([:positive])}"
+
+    Code.compile_string("""
+    defmodule #{module} do
+      use Edict.Enforcement.Authorize
+      #{declaration}
+      def handle_event(_event, _params, socket), do: {:noreply, socket}
+    end
+    """)
+  end
 end

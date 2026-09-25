@@ -8,8 +8,8 @@ defmodule Edict.Enforcement.Authorize do
         use Phoenix.LiveView
         use Edict.Enforcement.Authorize
 
-        authorize "delete", action: :delete, entity_from_assigns: :project_id
-        authorize "update", action: :write, entity_from_assigns: :project_id
+        authorize "delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project
+        authorize "update", action: :write, entity_from_assigns: :project_id, entity_type: :project
 
         def handle_event("delete", _params, socket) do
           # Only reached if authorized
@@ -20,6 +20,9 @@ defmodule Edict.Enforcement.Authorize do
           {:noreply, assign(socket, :pinged, true)}
         end
       end
+
+  `:action`, `:entity_from_assigns` and `:entity_type` are required; a missing
+  one fails compilation.
 
   Each `authorize` declaration generates a `handle_event/3` clause that checks
   permission before delegating to the original handler via `super/3`.
@@ -33,14 +36,27 @@ defmodule Edict.Enforcement.Authorize do
     end
   end
 
+  @required_options [:action, :entity_from_assigns, :entity_type]
+
   defmacro authorize(event_name, opts) do
+    [action, assigns_key, entity_type] = Enum.map(@required_options, &fetch_option!(opts, &1))
+
     quote do
       Module.put_attribute(__MODULE__, :edict_authorizations, {
         unquote(event_name),
-        unquote(opts[:action] || :read),
-        unquote(opts[:entity_from_assigns] || :entity_id),
-        unquote(opts[:entity_type] || :project)
+        unquote(action),
+        unquote(assigns_key),
+        unquote(entity_type)
       })
+    end
+  end
+
+  # A security declaration must be explicit: a default could silently guard
+  # the wrong action or resource.
+  defp fetch_option!(opts, key) do
+    case Keyword.fetch(opts, key) do
+      {:ok, value} -> value
+      :error -> raise ArgumentError, "authorize requires the #{inspect(key)} option"
     end
   end
 
@@ -60,7 +76,7 @@ defmodule Edict.Enforcement.Authorize do
                  document,
                  unquote(action),
                  unquote(entity_type),
-                 to_string(entity_id),
+                 entity_id,
                  config_module
                ) do
               super(unquote(event_name), params, socket)

@@ -16,6 +16,8 @@ defmodule Edict.Enforcement.Plug do
     * `:edict_config` — (optional) override config map. Defaults to app env via `Edict.config/0`
 
   A missing param yields no entity ID, so the check fails and the request is unauthorized.
+
+  The connection is always halted on denial, even if `on_unauthorized` does not halt it.
   """
 
   @behaviour Plug
@@ -32,7 +34,7 @@ defmodule Edict.Enforcement.Plug do
     config_module = edict_config.config_module
     user_id = config_module.user_id_from_assigns(conn.assigns) |> to_string()
     entity_type = opts.entity_type
-    entity_id = opts |> entity_id(conn) |> to_string()
+    entity_id = entity_id(opts, conn)
 
     document = Helpers.load_document(edict_config, user_id)
 
@@ -46,7 +48,10 @@ defmodule Edict.Enforcement.Plug do
   defp entity_id(%{param: param}, conn), do: conn.params[param]
   defp entity_id(%{entity_from: entity_from}, conn), do: entity_from.(conn)
 
+  # Halt regardless of the callback: it shapes the response, not whether
+  # enforcement happens.
   defp unauthorized(conn, config_module) do
     config_module.on_unauthorized().(conn, %{})
+    |> Plug.Conn.halt()
   end
 end
