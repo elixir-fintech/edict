@@ -18,8 +18,5 @@ erl_crash.dump
 # Test artifacts
 /tmp/
 
-# Mix lock
-mix.lock
-
 #doc folder
 /doc
