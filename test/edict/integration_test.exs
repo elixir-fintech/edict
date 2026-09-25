@@ -1,6 +1,20 @@
 defmodule Edict.IntegrationTest do
   use ExUnit.Case
 
+  defmodule StrongEventLiveView do
+    use Edict.Enforcement.Authorize
+
+    authorize("approve",
+      action: :approve_transfer,
+      entity_from_assigns: :account_id,
+      entity_type: :account
+    )
+
+    def handle_event("approve", _params, socket) do
+      {:noreply, Map.update!(socket, :assigns, &Map.put(&1, :approved, true))}
+    end
+  end
+
   import ExUnit.CaptureLog
 
   alias Edict.Cache.{Document, PubSubListener, Store}
@@ -230,6 +244,24 @@ defmodule Edict.IntegrationTest do
       {:halt, result_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
 
       assert result_socket.redirected
+    end
+
+    test "authorize event denies a strong action revoked in the DB", %{
+      strong_config: strong_config
+    } do
+      # Still grants treasurer: the setup revoked without notifying the cache
+      stale_doc = Helpers.load_document(strong_config, "alice")
+
+      socket =
+        build_socket(%{
+          account_id: "7",
+          current_user_roles: stale_doc,
+          edict_config: strong_config
+        })
+
+      {:noreply, result} = StrongEventLiveView.handle_event("approve", %{}, socket)
+
+      assert result.redirected
     end
 
     test "LiveView mount with strong: false continues from the stale cache", %{
