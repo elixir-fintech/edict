@@ -10,6 +10,11 @@ defmodule Edict.Enforcement.Helpers do
 
   require Logger
 
+  # Lists and maps (array or nested request params) must never be joined by
+  # to_string/1 into another entity's ID, so only scalars are entity IDs.
+  defguardp is_entity_id(entity_id)
+            when (is_binary(entity_id) and entity_id != "") or is_integer(entity_id)
+
   alias Edict.Cache.{Document, Store}
 
   @doc """
@@ -164,9 +169,10 @@ defmodule Edict.Enforcement.Helpers do
     :ok
   end
 
-  # A missing entity ID is denied by can?/5, so it never needs a DB read.
-  defp strong_check?(_config_module, _action, entity_id, _opts) when entity_id in [nil, ""],
-    do: false
+  # An invalid entity ID is denied by can?/5, so it never needs a DB read.
+  defp strong_check?(_config_module, _action, entity_id, _opts)
+       when not is_entity_id(entity_id),
+       do: false
 
   defp strong_check?(config_module, action, _entity_id, opts),
     do: config_module.strong_action?(action) and opts != [strong: false]
@@ -185,7 +191,12 @@ defmodule Edict.Enforcement.Helpers do
     Document.new(user_id, rows, make_ref())
   end
 
-  @doc "Check permission using an entity struct (via Edict.Entity protocol)."
+  @doc """
+  Check permission using an entity struct (via Edict.Entity protocol).
+
+  Reads only `document` and ignores strong actions; enforcement uses
+  `authorized?/6`.
+  """
   @spec can?(Document.t(), atom(), struct(), module()) :: boolean()
   def can?(document, action, entity, config_module) when is_struct(entity) do
     entity_type = Edict.Entity.entity_type(entity)
@@ -196,11 +207,15 @@ defmodule Edict.Enforcement.Helpers do
   @doc """
   Check permission using entity_type and entity_id directly.
 
+  Reads only `document` and ignores strong actions; enforcement uses
+  `authorized?/6`. Only a non-empty string or an integer is an entity ID:
+  anything else, such as `nil`, `""` or an array request param, is denied.
+
   A `nil` or blank entity ID, such as a missing request param, is always denied.
   """
   @spec can?(Document.t(), atom(), atom(), term(), module()) :: boolean()
   def can?(_document, _action, _entity_type, entity_id, _config_module)
-      when entity_id in [nil, ""],
+      when not is_entity_id(entity_id),
       do: false
 
   def can?(document, action, entity_type, entity_id, config_module) do

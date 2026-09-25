@@ -197,7 +197,8 @@ end
 
 On success, the authorization document is stored in `conn.assigns.current_user_roles`.
 On denial, Edict calls `on_unauthorized` and then halts the connection itself. A missing
-param or blank entity ID is always denied.
+param, a blank entity ID, or a non-scalar one such as an array param (`?project_id[]=7`) is
+always denied.
 
 `param:` names the request param holding the entity ID. When the ID needs custom extraction,
 pass `entity_from:` instead. Plug and `on_mount` options are stored at compile time, so it must

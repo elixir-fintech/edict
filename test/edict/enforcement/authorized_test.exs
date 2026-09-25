@@ -92,4 +92,28 @@ defmodule Edict.Enforcement.AuthorizedTest do
       Helpers.authorized?(config, stale_doc, :approve_transfer, :account, "7", strong: :yes)
     end
   end
+
+  test "denies a strong action for a list entity ID without querying", %{stale_doc: stale_doc} do
+    raising_config = %{repo: Edict.Test.RaisingRepo, config_module: Edict.Test.StrongConfig}
+
+    refute Helpers.authorized?(raising_config, stale_doc, :approve_transfer, :account, ["7"], [])
+  end
+
+  test "denies a strong action with a missing entity ID without querying", %{
+    stale_doc: stale_doc
+  } do
+    raising_config = %{repo: Edict.Test.RaisingRepo, config_module: Edict.Test.StrongConfig}
+
+    refute Helpers.authorized?(raising_config, stale_doc, :approve_transfer, :account, nil, [])
+  end
+
+  test "denies a strong action for an existing role atom the config does not define", %{
+    config: config,
+    empty_doc: empty_doc
+  } do
+    # :viewer exists as an atom (Edict.Test.Config defines it) but StrongConfig does not
+    insert_role!("viewer", "7")
+
+    refute Helpers.authorized?(config, empty_doc, :approve_transfer, :account, "7", [])
+  end
 end

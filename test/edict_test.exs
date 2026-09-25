@@ -217,4 +217,14 @@ defmodule EdictTest do
       assert Edict.can?(doc, :approve_transfer, :account, "7", strong: false)
     end
   end
+
+  describe "can?/4 misuse" do
+    test "raises when options are passed instead of an entity ID" do
+      doc = %Edict.Cache.Document{user_id: "user-1", version: 1, roles: %{}}
+
+      assert_raise FunctionClauseError, fn ->
+        Edict.can?(doc, :read, :project, strong: false)
+      end
+    end
+  end
 end

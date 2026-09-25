@@ -200,8 +200,9 @@ defmodule Edict do
     can?(document, action, entity_type, entity_id, opts)
   end
 
-  def can?(document, action, entity_type, entity_id) when is_atom(entity_type),
-    do: can?(document, action, entity_type, entity_id, [])
+  def can?(document, action, entity_type, entity_id)
+      when is_atom(entity_type) and not is_list(entity_id),
+      do: can?(document, action, entity_type, entity_id, [])
 
   @doc "Check permission using entity_type and entity_id directly, with options."
   @spec can?(Document.t(), atom(), atom(), id(), keyword()) :: boolean()

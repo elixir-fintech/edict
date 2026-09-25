@@ -50,4 +50,16 @@ defmodule Edict.Enforcement.HelpersTest do
       refute Helpers.can?(doc, :read, project, @config_module)
     end
   end
+
+  describe "can?/5 with a non-scalar entity ID" do
+    test "denies a list entity ID" do
+      doc = %Document{user_id: "user-1", version: 1, roles: %{{:project, "78"} => [:admin]}}
+
+      refute Helpers.can?(doc, :read, :project, ["7", "8"], @config_module)
+    end
+
+    test "denies a map entity ID", %{doc: doc} do
+      refute Helpers.can?(doc, :read, :project, %{"a" => "7"}, @config_module)
+    end
+  end
 end

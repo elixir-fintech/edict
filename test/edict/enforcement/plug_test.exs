@@ -22,7 +22,9 @@ defmodule Edict.Enforcement.PlugTest do
       roles: %{
         {:project, "7"} => [:admin],
         # A blank entity ID must never match a request missing its param
-        {:project, ""} => [:admin]
+        {:project, ""} => [:admin],
+        # An array param must never be joined into "78"
+        {:project, "78"} => [:admin]
       }
     }
 
@@ -156,5 +158,18 @@ defmodule Edict.Enforcement.PlugTest do
     assert_raise ArgumentError, ~r/:param or :entity_from/, fn ->
       EdictPlug.init(action: :read, entity_type: :project)
     end
+  end
+
+  test "array param is denied", %{edict_config: edict_config} do
+    conn =
+      Plug.Test.conn(:get, "/projects", %{})
+      |> Map.put(:params, %{"project_id" => ["7", "8"]})
+      |> Plug.Conn.assign(:current_user, %{id: "user-1"})
+      |> Plug.Conn.assign(:edict_config, edict_config)
+
+    result = Edict.Test.ReadProjectPipeline.call(conn, [])
+
+    assert result.halted
+    assert result.status == 403
   end
 end
