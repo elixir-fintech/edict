@@ -98,6 +98,32 @@ defmodule Edict.IntegrationTest do
       assert :editor in roles
     end
 
+    test "receives a revocation that lands while the connected LiveView mounts", %{
+      config: config
+    } do
+      start_supervised!(
+        Supervisor.child_spec({Phoenix.PubSub, name: :edict_revoke_pubsub},
+          id: :edict_revoke_pubsub
+        )
+      )
+
+      insert_role!("user-1", "admin", "project", "7")
+
+      racing_config = %{
+        config
+        | repo: Edict.Test.RevokeDuringLoadRepo,
+          pubsub: :edict_revoke_pubsub
+      }
+
+      # A transport pid makes the socket connected, so the hook subscribes
+      socket = %{build_socket(%{current_user: %{id: "user-1"}}) | transport_pid: self()}
+      opts = %{edict_config: racing_config, action: :read, entity_type: :project, param: "id"}
+
+      {:cont, _socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+
+      assert_received {:edict_version_bump, "user-1", _version}
+    end
+
     # On a remote node the per-user bump can reach the LiveView before
     # PubSubListener has copied the new version into the cache.
     test "halts on a bump that arrives before the cache version changes", %{config: config} do

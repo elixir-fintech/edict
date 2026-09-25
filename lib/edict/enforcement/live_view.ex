@@ -53,14 +53,14 @@ defmodule Edict.Enforcement.LiveView do
 
     policy = {opts.action, opts.entity_type, entity_id(opts, params)}
 
+    # Subscribe before loading: a revocation that lands while mounting then
+    # waits in the mailbox for the version hook instead of being missed.
+    socket = maybe_subscribe(socket, edict_config, user_id)
     document = Helpers.load_document(edict_config, user_id)
 
     case authorize(socket, edict_config, document, policy) do
       {:cont, socket} ->
-        {:cont,
-         socket
-         |> maybe_subscribe(edict_config, user_id)
-         |> attach_version_hook(edict_config, user_id, policy)}
+        {:cont, attach_version_hook(socket, edict_config, user_id, policy)}
 
       halted ->
         halted
