@@ -30,7 +30,7 @@ defmodule Edict.Config do
   - `valid_role?/1` — whether a role is defined
   - `valid_entity_type?/1` — whether an entity type is defined
   - `valid_action?/2` — whether an action is valid for an entity type
-  - `strong_action?/1` — whether an action is always checked against the database
+  - `strong_action?/1` — whether enforcement always checks an action against the database
   - `entity_types/0` — list of valid entity types
   - `user_id_from_assigns/1` — extract user ID from conn/socket assigns
   """
@@ -82,6 +82,10 @@ defmodule Edict.Config do
 
   @doc """
   Declares actions that are always checked against the database.
+
+  `Edict.Plug`, `Edict.LiveView` and `authorize` guards always check them
+  against the database. Only `Edict.can?` may opt out with `strong: false`,
+  for display checks.
 
   Takes a literal list of atoms and may appear at most once. Every listed
   action must be granted by some role.
@@ -252,7 +256,7 @@ defmodule Edict.Config do
       @doc "Returns `true` if the action is valid for the given entity type."
       def valid_action?(_action, _entity_type), do: false
 
-      @doc "Returns `true` if the action is strong: always checked against the database."
+      @doc "Returns `true` if the action is strong: enforcement always checks it against the database."
       def strong_action?(action), do: action in unquote(strong_actions)
 
       @doc "Extracts the user ID from conn/socket assigns."

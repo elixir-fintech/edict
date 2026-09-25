@@ -22,9 +22,9 @@ defmodule Edict.Enforcement.Authorize do
       end
 
   `:action`, `:entity_from_assigns` and `:entity_type` are required; a missing
-  one fails compilation. `strong: false` checks a strong action against the
-  document in assigns instead of the database; any other `:strong` value
-  fails compilation.
+  one fails compilation. Strong actions (see `Edict.Config.strong_actions/1`)
+  are always checked against the database; a `:strong` option fails
+  compilation, since only `Edict.can?` may opt out.
 
   Each `authorize` declaration generates a `handle_event/3` clause that checks
   permission before delegating to the original handler via `super/3`.
@@ -42,15 +42,14 @@ defmodule Edict.Enforcement.Authorize do
 
   defmacro authorize(event_name, opts) do
     [action, assigns_key, entity_type] = Enum.map(@required_options, &fetch_option!(opts, &1))
-    strong_opts = Edict.Enforcement.Helpers.strong_opts!(opts)
+    Edict.Enforcement.Helpers.reject_strong!(opts)
 
     quote do
       Module.put_attribute(__MODULE__, :edict_authorizations, {
         unquote(event_name),
         unquote(action),
         unquote(assigns_key),
-        unquote(entity_type),
-        unquote(strong_opts)
+        unquote(entity_type)
       })
     end
   end
@@ -68,7 +67,7 @@ defmodule Edict.Enforcement.Authorize do
     authorizations = Module.get_attribute(env.module, :edict_authorizations)
 
     guard_clauses =
-      Enum.map(authorizations, fn {event_name, action, assigns_key, entity_type, strong_opts} ->
+      Enum.map(authorizations, fn {event_name, action, assigns_key, entity_type} ->
         quote do
           def handle_event(unquote(event_name), params, socket) do
             entity_id = socket.assigns[unquote(assigns_key)]
@@ -82,7 +81,7 @@ defmodule Edict.Enforcement.Authorize do
                  unquote(action),
                  unquote(entity_type),
                  entity_id,
-                 unquote(strong_opts)
+                 []
                ) do
               super(unquote(event_name), params, socket)
             else

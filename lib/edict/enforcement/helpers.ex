@@ -113,6 +113,23 @@ defmodule Edict.Enforcement.Helpers do
     end
   end
 
+  @doc """
+  Raises `ArgumentError` if `opts` contains `:strong`.
+
+  Enforcement (Plug, LiveView mount, `authorize` events) always follows
+  `strong_actions`; only `Edict.can?` may opt out, for display checks.
+  """
+  @spec reject_strong!(Enumerable.t()) :: :ok
+  def reject_strong!(opts) do
+    if Enum.any?(opts, &match?({:strong, _}, &1)) do
+      raise ArgumentError,
+            "the :strong option is only accepted by Edict.can?; " <>
+              "enforcement always follows strong_actions"
+    end
+
+    :ok
+  end
+
   # A missing entity ID is denied by can?/5, so it never needs a DB read.
   defp strong_check?(_config_module, _action, entity_id, _opts) when entity_id in [nil, ""],
     do: false

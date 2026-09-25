@@ -285,7 +285,7 @@ is already open re-checks its mount permission only when the node receives the r
 and a node that missed it keeps the LiveView running. **Guard every event that performs a
 strong action with `authorize`**, not only the mount.
 
-Pass `strong: false` where a stale answer is acceptable, typically in templates:
+`Edict.can?` accepts `strong: false` for display checks, where a stale answer is acceptable:
 
 ```heex
 <%= if Edict.can?(@current_user_roles, :approve_transfer, @account, strong: false) do %>
@@ -299,7 +299,9 @@ Pair it with a strong check on the event itself:
 authorize "approve", action: :approve_transfer, entity_from_assigns: :account_id, entity_type: :account
 ```
 
-`strong: false` is the only accepted value. Only the config makes an action strong.
+`strong: false` is the only accepted value, and only `Edict.can?` accepts it. `Edict.Plug`,
+`Edict.LiveView` and `authorize` raise on a `:strong` option, so enforcement always follows the
+config.
 
 ## How caching works
 

@@ -133,4 +133,10 @@ defmodule Edict.Enforcement.PlugTest do
       EdictPlug.init(action: :read, entity_type: :project, param: "id", strong: true)
     end
   end
+
+  test "init rejects strong: false" do
+    assert_raise ArgumentError, ~r/Edict\.can\?/, fn ->
+      EdictPlug.init(action: :read, entity_type: :project, param: "id", strong: false)
+    end
+  end
 end

@@ -129,6 +129,14 @@ defmodule Edict.Enforcement.AuthorizeTest do
     end
   end
 
+  test "authorize with strong: false fails to compile" do
+    assert_raise ArgumentError, ~r/Edict\.can\?/, fn ->
+      compile_authorize(
+        ~s|authorize("delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project, strong: false)|
+      )
+    end
+  end
+
   defp compile_authorize(declaration) do
     module = "Edict.AuthorizeTest.Compiled#{System.unique_integer([:positive])}"
 

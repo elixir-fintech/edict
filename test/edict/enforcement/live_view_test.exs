@@ -137,4 +137,12 @@ defmodule Edict.Enforcement.LiveViewTest do
 
     assert result_socket.redirected
   end
+
+  test "mount rejects strong: false", %{opts: opts, socket: socket, params: params} do
+    strong_opts = Map.put(opts, :strong, false)
+
+    assert_raise ArgumentError, ~r/Edict\.can\?/, fn ->
+      EdictLiveView.on_mount(strong_opts, params, %{}, socket)
+    end
+  end
 end

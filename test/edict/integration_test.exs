@@ -247,26 +247,6 @@ defmodule Edict.IntegrationTest do
       assert result.status == 403
     end
 
-    test "Plug with strong: false allows from the stale cache", %{strong_config: strong_config} do
-      opts =
-        EdictPlug.init(
-          edict_config: strong_config,
-          action: :approve_transfer,
-          entity_type: :account,
-          param: "id",
-          strong: false
-        )
-
-      conn =
-        Plug.Test.conn(:post, "/accounts/7/approve", %{})
-        |> Map.put(:params, %{"id" => "7"})
-        |> Plug.Conn.assign(:current_user, %{id: "alice"})
-
-      result = EdictPlug.call(conn, opts)
-
-      refute result.halted
-    end
-
     test "LiveView mount halts on a strong action revoked in the DB", %{
       strong_config: strong_config
     } do
@@ -300,22 +280,6 @@ defmodule Edict.IntegrationTest do
       {:noreply, result} = StrongEventLiveView.handle_event("approve", %{}, socket)
 
       assert result.redirected
-    end
-
-    test "LiveView mount with strong: false continues from the stale cache", %{
-      strong_config: strong_config
-    } do
-      socket = build_socket(%{current_user: %{id: "alice"}})
-
-      opts = %{
-        edict_config: strong_config,
-        action: :approve_transfer,
-        entity_type: :account,
-        param: "id",
-        strong: false
-      }
-
-      assert {:cont, _socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
     end
   end
 
