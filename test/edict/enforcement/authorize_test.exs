@@ -2,28 +2,19 @@ defmodule Edict.Enforcement.AuthorizeTest do
   use ExUnit.Case, async: true
 
   alias Edict.Cache.Document
+  alias Edict.Enforcement.Authorize
 
   defmodule TestLiveView do
-    # Simulate a LiveView module with handle_event/3
+    use Phoenix.LiveView
     use Edict.Enforcement.Authorize
 
     authorize("delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project)
     authorize("update", action: :write, entity_from_assigns: :project_id, entity_type: :project)
     authorize("typo", action: :aprove, entity_from_assigns: :project_id, entity_type: :project)
 
-    def handle_event("delete", _params, socket) do
-      {:noreply, Map.update!(socket, :assigns, &Map.put(&1, :deleted, true))}
-    end
+    def render(assigns), do: ~H""
 
-    def handle_event("update", _params, socket) do
-      {:noreply, Map.update!(socket, :assigns, &Map.put(&1, :updated, true))}
-    end
-
-    def handle_event("typo", _params, socket), do: {:noreply, socket}
-
-    def handle_event("ping", _params, socket) do
-      {:noreply, Map.update!(socket, :assigns, &Map.put(&1, :pinged, true))}
-    end
+    def handle_event(_event, _params, socket), do: {:noreply, socket}
   end
 
   setup do
@@ -50,17 +41,14 @@ defmodule Edict.Enforcement.AuthorizeTest do
     %{edict_config: edict_config, admin_doc: admin_doc, viewer_doc: viewer_doc}
   end
 
-  test "admin can delete — handler runs", %{edict_config: edict_config, admin_doc: admin_doc} do
+  test "admin can delete — the event continues to the handler", %{
+    edict_config: edict_config,
+    admin_doc: admin_doc
+  } do
     socket =
-      build_socket(%{
-        project_id: "7",
-        current_user_roles: admin_doc,
-        edict_config: edict_config
-      })
+      build_socket(%{project_id: "7", current_user_roles: admin_doc, edict_config: edict_config})
 
-    {:noreply, result} = TestLiveView.handle_event("delete", %{}, socket)
-
-    assert result.assigns[:deleted] == true
+    assert {:cont, _socket} = run_hook("delete", socket)
   end
 
   test "viewer cannot delete — on_unauthorized called", %{
@@ -68,38 +56,30 @@ defmodule Edict.Enforcement.AuthorizeTest do
     viewer_doc: viewer_doc
   } do
     socket =
-      build_socket(%{
-        project_id: "7",
-        current_user_roles: viewer_doc,
-        edict_config: edict_config
-      })
+      build_socket(%{project_id: "7", current_user_roles: viewer_doc, edict_config: edict_config})
 
-    {:noreply, result} = TestLiveView.handle_event("delete", %{}, socket)
+    {:halt, result} = run_hook("delete", socket)
 
     assert result.redirected
   end
 
-  test "unguarded ping passes through normally", %{
-    edict_config: edict_config,
-    viewer_doc: viewer_doc
-  } do
+  test "an undeclared event passes through", %{edict_config: edict_config, viewer_doc: viewer_doc} do
     socket =
-      build_socket(%{
-        project_id: "7",
-        current_user_roles: viewer_doc,
-        edict_config: edict_config
-      })
+      build_socket(%{project_id: "7", current_user_roles: viewer_doc, edict_config: edict_config})
 
-    {:noreply, result} = TestLiveView.handle_event("ping", %{}, socket)
+    {:cont, result} = run_hook("ping", socket)
 
-    assert result.assigns[:pinged] == true
+    refute result.redirected
   end
 
-  defp build_socket(assigns) do
-    %Phoenix.LiveView.Socket{
-      assigns: Map.merge(%{__changed__: %{}}, assigns),
-      private: %{live_temp: %{}, lifecycle: %Phoenix.LiveView.Lifecycle{}}
-    }
+  test "an event guard raises for an action the entity type does not define", %{
+    edict_config: edict_config,
+    admin_doc: admin_doc
+  } do
+    socket =
+      build_socket(%{project_id: "7", current_user_roles: admin_doc, edict_config: edict_config})
+
+    assert_raise ArgumentError, ~r/:aprove/, fn -> run_hook("typo", socket) end
   end
 
   test "authorize without :action fails to compile" do
@@ -140,16 +120,36 @@ defmodule Edict.Enforcement.AuthorizeTest do
     end
   end
 
-  test "an event guard raises for an action the entity type does not define", %{
-    edict_config: edict_config,
-    admin_doc: admin_doc
-  } do
-    socket =
-      build_socket(%{project_id: "7", current_user_roles: admin_doc, edict_config: edict_config})
-
-    assert_raise ArgumentError, ~r/:aprove/, fn ->
-      TestLiveView.handle_event("typo", %{}, socket)
+  test "declaring an event twice fails to compile" do
+    assert_raise CompileError, ~r/more than once/, fn ->
+      compile_authorize("""
+      authorize("delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project)
+      authorize("delete", action: :write, entity_from_assigns: :project_id, entity_type: :project)
+      """)
     end
+  end
+
+  test "using authorize without Phoenix.LiveView fails to compile" do
+    assert_raise CompileError, ~r/Phoenix\.LiveView/, fn ->
+      Code.compile_string("""
+      defmodule Edict.AuthorizeTest.NoLiveView#{System.unique_integer([:positive])} do
+        use Edict.Enforcement.Authorize
+      end
+      """)
+    end
+  end
+
+  defp build_socket(assigns) do
+    %Phoenix.LiveView.Socket{
+      assigns: Map.merge(%{__changed__: %{}}, assigns),
+      private: %{live_temp: %{}, lifecycle: %Phoenix.LiveView.Lifecycle{}}
+    }
+  end
+
+  defp run_hook(event, socket) do
+    {:cont, mounted} = Authorize.on_mount(TestLiveView, %{}, %{}, socket)
+    [hook] = mounted.private.lifecycle.handle_event
+    hook.function.(event, %{}, mounted)
   end
 
   defp compile_authorize(declaration) do
@@ -157,9 +157,10 @@ defmodule Edict.Enforcement.AuthorizeTest do
 
     Code.compile_string("""
     defmodule #{module} do
+      use Phoenix.LiveView
       use Edict.Enforcement.Authorize
       #{declaration}
-      def handle_event(_event, _params, socket), do: {:noreply, socket}
+      def render(assigns), do: ~H""
     end
     """)
   end

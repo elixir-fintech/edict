@@ -2,6 +2,7 @@ defmodule Edict.IntegrationTest do
   use ExUnit.Case
 
   defmodule StrongEventLiveView do
+    use Phoenix.LiveView
     use Edict.Enforcement.Authorize
 
     authorize("approve",
@@ -10,9 +11,9 @@ defmodule Edict.IntegrationTest do
       entity_type: :account
     )
 
-    def handle_event("approve", _params, socket) do
-      {:noreply, Map.update!(socket, :assigns, &Map.put(&1, :approved, true))}
-    end
+    def render(assigns), do: ~H""
+
+    def handle_event("approve", _params, socket), do: {:noreply, socket}
   end
 
   import ExUnit.CaptureLog
@@ -303,7 +304,12 @@ defmodule Edict.IntegrationTest do
           edict_config: strong_config
         })
 
-      {:noreply, result} = StrongEventLiveView.handle_event("approve", %{}, socket)
+      {:cont, mounted} =
+        Edict.Enforcement.Authorize.on_mount(StrongEventLiveView, %{}, %{}, socket)
+
+      [hook] = mounted.private.lifecycle.handle_event
+
+      {:halt, result} = hook.function.("approve", %{}, mounted)
 
       assert result.redirected
     end

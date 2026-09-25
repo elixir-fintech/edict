@@ -246,7 +246,7 @@ defmodule MyAppWeb.ProjectLive.Show do
 end
 ```
 
-`action:`, `entity_from_assigns:` and `entity_type:` are all required; leaving one out fails compilation.
+`action:`, `entity_from_assigns:` and `entity_type:` are all required; leaving one out, or declaring an event twice, fails compilation. `use Edict.Enforcement.Authorize` must come after `use Phoenix.LiveView` (here via `use MyAppWeb, :live_view`): it attaches a `handle_event` hook that checks each declared event before your handler runs.
 
 ### In templates
 
