@@ -1,6 +1,8 @@
 defmodule Edict.CoreTest do
   use ExUnit.Case
 
+  import ExUnit.CaptureLog
+
   alias Edict.Core
   alias Edict.Cache.Store
   alias Edict.Schema.UserRole
@@ -225,6 +227,43 @@ defmodule Edict.CoreTest do
       assert_raise Postgrex.Error, ~r/user_roles_entity_id_not_blank/, fn ->
         Edict.Test.Repo.insert_all(UserRole, [entry])
       end
+    end
+  end
+
+  describe "invalidate/2 when the global broadcast fails" do
+    @describetag :capture_log
+
+    setup %{config: config} do
+      failing_pubsub = :"failing_pubsub_#{System.unique_integer([:positive])}"
+
+      start_supervised!(
+        Supervisor.child_spec(
+          {Phoenix.PubSub, name: failing_pubsub, adapter: Edict.Test.FailingPubSubAdapter},
+          id: failing_pubsub
+        )
+      )
+
+      %{failing_config: Map.put(config, :pubsub, failing_pubsub)}
+    end
+
+    test "returns the broadcast error", %{failing_config: failing_config} do
+      assert {:error, :down} = Core.invalidate(failing_config, "user-1")
+    end
+
+    test "emits a broadcast failed telemetry event", %{failing_config: failing_config} do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [[:edict, :invalidation, :broadcast_failed]])
+
+      Core.invalidate(failing_config, "user-1")
+
+      assert_received {[:edict, :invalidation, :broadcast_failed], ^ref, %{count: 1},
+                       %{user_id: "user-1", topic: "edict:versions", reason: :down}}
+    end
+
+    test "logs an error", %{failing_config: failing_config} do
+      log = capture_log(fn -> Core.invalidate(failing_config, "user-1") end)
+
+      assert log =~ "Edict invalidation broadcast failed"
     end
   end
 

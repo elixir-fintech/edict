@@ -12,6 +12,8 @@ defmodule Edict.Core do
 
   import Ecto.Query
 
+  require Logger
+
   alias Edict.Cache.Store
   alias Edict.Schema.UserRole
 
@@ -196,9 +198,28 @@ defmodule Edict.Core do
     {:ok, new_version} = Store.bump_version(config.cache, user_id)
     message = {:edict_version_bump, user_id, new_version}
 
-    # Global topic for PubSubListener (cross-node cache invalidation)
-    Phoenix.PubSub.broadcast(config.pubsub, config.topic, message)
-    # Per-user topic for LiveView hooks (targeted delivery)
-    Phoenix.PubSub.broadcast(config.pubsub, "edict:user:#{user_id}", message)
+    # Global topic for PubSubListener (cross-node cache invalidation) and the
+    # per-user topic for LiveView hooks. Both are always attempted; the DB change
+    # has already committed, so a failure is reported, not rolled back.
+    [config.topic, "edict:user:#{user_id}"]
+    |> Enum.map(&broadcast(config.pubsub, &1, user_id, message))
+    |> Enum.find(:ok, &match?({:error, _}, &1))
+  end
+
+  defp broadcast(pubsub, topic, user_id, message) do
+    with {:error, reason} = error <- Phoenix.PubSub.broadcast(pubsub, topic, message) do
+      :telemetry.execute([:edict, :invalidation, :broadcast_failed], %{count: 1}, %{
+        user_id: user_id,
+        topic: topic,
+        reason: reason
+      })
+
+      Logger.error(
+        "Edict invalidation broadcast failed on #{topic} (#{inspect(reason)}); " <>
+          "other nodes may serve user #{user_id}'s old roles until the TTL expires"
+      )
+
+      error
+    end
   end
 end

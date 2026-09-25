@@ -352,6 +352,14 @@ document from the DB and skip caching it. Each fallback logs an error and emits 
 |---|---|---|
 | `[:edict, :cache, :unavailable]` | `%{count: 1}` | `%{user_id: String.t(), reason: term()}` |
 
+**If a role change can't be broadcast** (for example a PubSub adapter that lost its connection),
+the DB change stays committed and other nodes may keep the old roles until the TTL expires. Each
+failed broadcast logs an error and emits:
+
+| Event | Measurements | Metadata |
+|---|---|---|
+| `[:edict, :invalidation, :broadcast_failed]` | `%{count: 1}` | `%{user_id: String.t(), topic: String.t(), reason: term()}` |
+
 ## Testing
 
 Edict provides test helpers for convenient permission setup and assertions:
