@@ -131,6 +131,21 @@ defmodule Edict.Enforcement.Helpers do
   end
 
   @doc """
+  Raises `ArgumentError` unless the config defines `action` for `entity_type`.
+
+  A typo such as `:aprove` would otherwise deny every request silently.
+  """
+  @spec validate_action!(module(), atom(), atom()) :: :ok
+  def validate_action!(config_module, action, entity_type) do
+    unless config_module.valid_action?(action, entity_type) do
+      raise ArgumentError,
+            "unknown action #{inspect(action)} for entity type #{inspect(entity_type)}"
+    end
+
+    :ok
+  end
+
+  @doc """
   Raises `ArgumentError` unless `opts` contains every key in `keys`.
 
   A security declaration must be explicit: a default could silently guard

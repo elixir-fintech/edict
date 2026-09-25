@@ -55,14 +55,12 @@ defmodule Edict.Enforcement.PlugTest do
   end
 
   test "unauthorized request is halted with 403", %{opts: opts} do
-    billing_opts = Map.put(opts, :action, :billing)
-
     conn =
-      Plug.Test.conn(:get, "/projects/7", %{})
-      |> Map.put(:params, %{"id" => "7"})
+      Plug.Test.conn(:get, "/projects/8", %{})
+      |> Map.put(:params, %{"id" => "8"})
       |> Plug.Conn.assign(:current_user, %{id: "user-1"})
 
-    result = EdictPlug.call(conn, billing_opts)
+    result = EdictPlug.call(conn, opts)
 
     assert result.halted
     assert result.status == 403
@@ -87,12 +85,12 @@ defmodule Edict.Enforcement.PlugTest do
     edict_config: edict_config
   } do
     conn =
-      Plug.Test.conn(:get, "/projects/7", %{})
-      |> Map.put(:params, %{"project_id" => "7"})
+      Plug.Test.conn(:get, "/projects/8", %{})
+      |> Map.put(:params, %{"project_id" => "8"})
       |> Plug.Conn.assign(:current_user, %{id: "user-1"})
       |> Plug.Conn.assign(:edict_config, edict_config)
 
-    result = Edict.Test.BillingProjectPipeline.call(conn, [])
+    result = Edict.Test.ReadProjectPipeline.call(conn, [])
 
     assert result.halted
     assert result.status == 403
@@ -124,7 +122,7 @@ defmodule Edict.Enforcement.PlugTest do
       |> Plug.Conn.assign(:current_user, %{id: "user-1"})
       |> Plug.Conn.assign(:edict_config, non_halting_config)
 
-    result = Edict.Test.BillingProjectThenMarkPipeline.call(conn, [])
+    result = Edict.Test.ReadProjectThenMarkPipeline.call(conn, [])
 
     assert result.halted
     refute result.assigns[:downstream_ran]
@@ -171,5 +169,16 @@ defmodule Edict.Enforcement.PlugTest do
 
     assert result.halted
     assert result.status == 403
+  end
+
+  test "an action the entity type does not define raises", %{opts: opts} do
+    typo_opts = Map.put(opts, :action, :aprove)
+
+    conn =
+      Plug.Test.conn(:get, "/projects/7", %{})
+      |> Map.put(:params, %{"id" => "7"})
+      |> Plug.Conn.assign(:current_user, %{id: "user-1"})
+
+    assert_raise ArgumentError, ~r/:aprove/, fn -> EdictPlug.call(conn, typo_opts) end
   end
 end

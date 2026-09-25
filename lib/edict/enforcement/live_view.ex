@@ -23,6 +23,8 @@ defmodule Edict.Enforcement.LiveView do
     * `:edict_config` — (optional) override config map. Defaults to app env via `Edict.config/0`
 
   A missing param yields no entity ID, so the check fails and the user is unauthorized.
+  An action the config does not define for the entity type raises `ArgumentError`
+  on mount, instead of silently denying.
 
   Strong actions (see `Edict.Config.strong_actions/1`) are always checked against
   the database. The `:strong` option is rejected: only `Edict.can?` may opt out.
@@ -49,6 +51,7 @@ defmodule Edict.Enforcement.LiveView do
     opts = Map.new(opts)
     Helpers.validate_enforcement_opts!(opts, "Edict.LiveView")
     {edict_config, user_id} = Helpers.resolve(opts, socket.assigns)
+    Helpers.validate_action!(edict_config.config_module, opts.action, opts.entity_type)
 
     policy = {opts.action, opts.entity_type, entity_id(opts, params)}
 

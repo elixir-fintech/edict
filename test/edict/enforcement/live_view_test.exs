@@ -56,10 +56,8 @@ defmodule Edict.Enforcement.LiveViewTest do
     assert %Document{} = result_socket.assigns[:current_user_roles]
   end
 
-  test "unauthorized user gets :halt", %{opts: opts, socket: socket, params: params} do
-    billing_opts = Map.put(opts, :action, :billing)
-
-    {:halt, result_socket} = EdictLiveView.on_mount(billing_opts, params, %{}, socket)
+  test "unauthorized user gets :halt", %{opts: opts, socket: socket} do
+    {:halt, result_socket} = EdictLiveView.on_mount(opts, %{"id" => "8"}, %{}, socket)
 
     assert result_socket.redirected
   end
@@ -76,14 +74,10 @@ defmodule Edict.Enforcement.LiveViewTest do
     assert %Document{} = result_socket.assigns[:current_user_roles]
   end
 
-  test "unauthorized user gets :halt with keyword list opts", %{
-    opts: opts,
-    socket: socket,
-    params: params
-  } do
-    keyword_opts = opts |> Map.put(:action, :billing) |> Map.to_list()
+  test "unauthorized user gets :halt with keyword list opts", %{opts: opts, socket: socket} do
+    keyword_opts = Map.to_list(opts)
 
-    {:halt, result_socket} = EdictLiveView.on_mount(keyword_opts, params, %{}, socket)
+    {:halt, result_socket} = EdictLiveView.on_mount(keyword_opts, %{"id" => "8"}, %{}, socket)
 
     assert result_socket.redirected
   end
@@ -102,16 +96,11 @@ defmodule Edict.Enforcement.LiveViewTest do
 
   test "unauthorized user gets :halt with param option", %{
     opts: opts,
-    socket: socket,
-    params: params
+    socket: socket
   } do
-    param_opts =
-      opts
-      |> Map.delete(:entity_from)
-      |> Map.put(:param, "id")
-      |> Map.put(:action, :billing)
+    param_opts = opts |> Map.delete(:entity_from) |> Map.put(:param, "id")
 
-    {:halt, result_socket} = EdictLiveView.on_mount(param_opts, params, %{}, socket)
+    {:halt, result_socket} = EdictLiveView.on_mount(param_opts, %{"id" => "8"}, %{}, socket)
 
     assert result_socket.redirected
   end
@@ -161,6 +150,18 @@ defmodule Edict.Enforcement.LiveViewTest do
   test "mount rejects a missing entity ID source", %{opts: opts, socket: socket, params: params} do
     assert_raise ArgumentError, ~r/:param or :entity_from/, fn ->
       EdictLiveView.on_mount(Map.delete(opts, :entity_from), params, %{}, socket)
+    end
+  end
+
+  test "mount raises for an action the entity type does not define", %{
+    opts: opts,
+    socket: socket,
+    params: params
+  } do
+    typo_opts = Map.put(opts, :action, :aprove)
+
+    assert_raise ArgumentError, ~r/:aprove/, fn ->
+      EdictLiveView.on_mount(typo_opts, params, %{}, socket)
     end
   end
 end
