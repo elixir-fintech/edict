@@ -90,7 +90,7 @@ defmodule Edict.IntegrationTest do
       # Extract the attached hook function and invoke it
       [hook] = mounted_socket.private.lifecycle.handle_info
 
-      {:cont, updated_socket} =
+      {:halt, updated_socket} =
         hook.function.({:edict_version_bump, "user-1", 2}, mounted_socket)
 
       # Verify the document was reloaded with the new role
@@ -154,7 +154,7 @@ defmodule Edict.IntegrationTest do
       insert_role!("user-1", "editor", "project", "7")
       [hook] = mounted_socket.private.lifecycle.handle_info
 
-      {:cont, updated_socket} =
+      {:halt, updated_socket} =
         hook.function.({:edict_version_bump, "user-1", make_ref()}, mounted_socket)
 
       assert :editor in Document.roles_for(
@@ -162,6 +162,25 @@ defmodule Edict.IntegrationTest do
                :project,
                "7"
              )
+    end
+
+    test "raises when on_unauthorized only patches after revocation", %{
+      config: config,
+      cache: cache
+    } do
+      insert_role!("user-1", "viewer", "project", "7")
+      patching_config = Map.put(config, :config_module, Edict.Test.PatchingConfig)
+      socket = build_socket(%{current_user: %{id: "user-1"}})
+      opts = %{edict_config: patching_config, action: :read, entity_type: :project, param: "id"}
+      {:cont, mounted_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+
+      Edict.Test.Repo.delete_all(UserRole)
+      {:ok, version} = Store.bump_version(cache, "user-1")
+      [hook] = mounted_socket.private.lifecycle.handle_info
+
+      assert_raise RuntimeError, ~r/redirect/, fn ->
+        hook.function.({:edict_version_bump, "user-1", version}, mounted_socket)
+      end
     end
 
     test "halts with a redirect when the mounted permission is revoked", %{

@@ -2,8 +2,11 @@ defmodule Edict.Enforcement.LiveView do
   @moduledoc """
   LiveView `on_mount` hook that enforces authorization.
 
-  Loads the authorization document from cache, checks permissions,
-  and subscribes to PubSub for version bump notifications.
+  Loads the authorization document from the cache (rebuilding it if stale or
+  missing) and checks the permission. On a connected socket it first subscribes
+  to the user's version bumps, so none is missed while mounting. Strong actions are checked against
+  the database. On success the document is assigned as `current_user_roles`,
+  which `Edict.Enforcement.Authorize` guards and `Edict.can?` read.
 
   ## Usage
 
@@ -20,7 +23,11 @@ defmodule Edict.Enforcement.LiveView do
     * `:entity_from` — used when `:param` is not given: a function `(params -> entity_id)`.
       Must be a remote capture (`&MyModule.fun/1`), since `on_mount` options are
       stored at compile time and anonymous functions cannot be
-    * `:edict_config` — (optional) override config map. Defaults to app env via `Edict.config/0`
+    * `:edict_config` — (optional) config map, mainly for tests. It falls back to
+      `socket.assigns[:edict_config]`, then `Edict.config/0`, and is used for this
+      mount check, its PubSub subscription and the re-checks after version bumps.
+      `authorize` guards read only `socket.assigns[:edict_config]` and `Edict.can?`
+      always uses `Edict.config/0`, so neither sees this option
 
   A missing param yields no entity ID, so the check fails and the user is unauthorized.
   An action the config does not define for the entity type raises `ArgumentError`
@@ -34,8 +41,11 @@ defmodule Edict.Enforcement.LiveView do
 
   After mount, every version bump for the user re-runs the same check against
   the user's roles read from the database, not the cache. If it
-  fails, `on_unauthorized` is called and must redirect the socket; if it does
-  not, the LiveView raises so the client remounts and is denied.
+  fails, `on_unauthorized` is called and must redirect the socket with
+  `redirect` or `push_navigate`; if it does not, or only uses `push_patch`, which
+  keeps this LiveView open, the LiveView raises so the client remounts and is
+  denied. When the check passes, the bump message stops here and never reaches
+  the view's own `handle_info/2`.
 
   The re-check runs only when this node receives the version bump. A node that
   missed it keeps the LiveView open, even for a strong action, so guard every
@@ -47,6 +57,15 @@ defmodule Edict.Enforcement.LiveView do
   alias Edict.Cache.Document
   alias Edict.Enforcement.Helpers
 
+  @doc """
+  Checks the permission described by `opts` and attaches the version-bump hook.
+
+  Returns `{:cont, socket}` with `current_user_roles` assigned, or `{:halt, socket}`
+  from `on_unauthorized`, which must redirect: LiveView raises on a halted mount
+  without a redirect.
+  """
+  @spec on_mount(keyword() | map(), map(), map(), Phoenix.LiveView.Socket.t()) ::
+          {:cont | :halt, Phoenix.LiveView.Socket.t()}
   def on_mount(opts, params, _session, socket) do
     opts = Map.new(opts)
     Helpers.validate_enforcement_opts!(opts, "Edict.LiveView")
@@ -103,18 +122,26 @@ defmodule Edict.Enforcement.LiveView do
 
         socket
         |> authorize(edict_config, document, policy)
-        |> ensure_redirected()
+        |> consume_bump()
 
       _msg, socket ->
         {:cont, socket}
     end)
   end
 
-  # LiveView stops on a redirect. Without one the user would keep the page,
-  # so fail closed: the crash makes the client remount, which is denied.
-  defp ensure_redirected({:halt, %{redirected: nil}}) do
-    raise "on_unauthorized must redirect the LiveView socket when access is revoked"
-  end
+  # The bump is Edict's own message: halt so it never reaches the view's
+  # handle_info/2, which need not expect it.
+  defp consume_bump({:cont, socket}), do: {:halt, socket}
 
-  defp ensure_redirected(result), do: result
+  # LiveView stops on a redirect or push_navigate. Without one, or with a
+  # push_patch that keeps this LiveView, the user would keep the page, so fail
+  # closed: the crash makes the client remount, which is denied.
+  defp consume_bump({:halt, %{redirected: nil}}), do: raise_not_redirected()
+  defp consume_bump({:halt, %{redirected: {:live, :patch, _opts}}}), do: raise_not_redirected()
+  defp consume_bump({:halt, _socket} = halted), do: halted
+
+  defp raise_not_redirected do
+    raise "on_unauthorized must redirect the LiveView socket when access is revoked " <>
+            "(redirect or push_navigate; push_patch keeps the LiveView open)"
+  end
 end
