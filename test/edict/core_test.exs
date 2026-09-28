@@ -232,7 +232,7 @@ defmodule Edict.CoreTest do
     end
   end
 
-  describe "user_roles table" do
+  describe "edict_user_roles table" do
     test "rejects a blank entity ID written directly" do
       entry = %{
         id: Ecto.UUID.generate(),
@@ -243,7 +243,7 @@ defmodule Edict.CoreTest do
         inserted_at: DateTime.utc_now()
       }
 
-      assert_raise Postgrex.Error, ~r/user_roles_entity_id_not_blank/, fn ->
+      assert_raise Postgrex.Error, ~r/edict_user_roles_entity_id_not_blank/, fn ->
         Edict.Test.Repo.insert_all(UserRole, [entry])
       end
     end

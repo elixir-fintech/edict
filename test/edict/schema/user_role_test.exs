@@ -52,4 +52,8 @@ defmodule Edict.Schema.UserRoleTest do
       end)
     end)
   end
+
+  test "maps to the edict_user_roles table" do
+    assert UserRole.__schema__(:source) == "edict_user_roles"
+  end
 end

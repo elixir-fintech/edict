@@ -42,7 +42,7 @@ the migration with an earlier Edict version, add them in a new migration:
 
 ```elixir
 for column <- [:user_id, :entity_type, :entity_id, :role] do
-  create constraint(:user_roles, :"user_roles_#{column}_not_blank", check: "#{column} <> ''")
+  create constraint(:edict_user_roles, :"edict_user_roles_#{column}_not_blank", check: "#{column} <> ''")
 end
 ```
 

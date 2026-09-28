@@ -6,7 +6,11 @@ defmodule Edict.Test.NotBlankConstraintsMigration do
   # ran version 0 pick them up.
   def change do
     for column <- [:user_id, :entity_type, :entity_id, :role] do
-      create(constraint(:user_roles, :"user_roles_#{column}_not_blank", check: "#{column} <> ''"))
+      create(
+        constraint(:edict_user_roles, :"edict_user_roles_#{column}_not_blank",
+          check: "#{column} <> ''"
+        )
+      )
     end
   end
 end
