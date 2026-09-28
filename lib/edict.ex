@@ -3,9 +3,11 @@ defmodule Edict do
   Cached authorization for Phoenix applications.
 
   Edict maintains a per-user authorization document in an ETS-backed cache.
-  Permission checks read from the cached document with sub-microsecond latency.
-  Documents are automatically invalidated when roles change, with cross-node
-  support via Phoenix.PubSub.
+  Permission checks read the cached document without a database query; a stale
+  or missing document is rebuilt from the database, and strong actions (see
+  `Edict.Config.strong_actions/1`) are checked against it unless a display
+  check opts out. Documents are automatically invalidated when roles change, with
+  cross-node support via Phoenix.PubSub.
 
   ## Setup
 
@@ -27,7 +29,12 @@ defmodule Edict do
 
       Edict.assign_role(user_id, :admin, :organization, "42")
       Edict.revoke_role(user_id, :admin, :organization, "42")
-      Edict.assign_roles(user_id, :editor, [{:project, "7"}, {:team, "10"}])
+      Edict.assign_roles(user_id, :admin, [{:organization, "42"}, {:project, "7"}])
+
+  Writes return `{:error, :invalid_role}` for a role and
+  `{:error, :invalid_entity_type}` for an entity type the config does not
+  define, and raise
+  `ArgumentError` when called inside a transaction: use `Edict.Multi` there.
 
   ## Permission checks
 
@@ -44,7 +51,9 @@ defmodule Edict do
   - `Edict.Config` — DSL for defining entity types, roles, and actions
   - `Edict.Plug` — controller-level authorization
   - `Edict.LiveView` — LiveView on_mount authorization
-  - `Edict.Enforcement.Authorize` — per-event authorization macro
+  - `Edict.Enforcement.Authorize` — per-event authorization (`handle_event` hook)
+  - `Edict.Multi` — role changes inside an `Ecto.Multi`, invalidated after commit
+  - `Edict.Supervisor` — starts the cache and the cross-node listener
   - `Edict.Entity` — protocol for extracting entity identity from structs
   - `Edict.TestHelpers` — test helpers for granting roles and asserting permissions
   """
@@ -123,7 +132,12 @@ defmodule Edict do
     Edict.Core.list_roles(config(), to_string(user_id))
   end
 
-  @doc "Assigns a role to a user across multiple entities."
+  @doc """
+  Assigns a role to a user across multiple entities.
+
+  Returns only the newly inserted assignments: entities the user already has
+  the role on are skipped. Nothing is inserted if any entry is invalid.
+  """
   @spec assign_roles(id(), atom(), [{atom(), id()}]) ::
           {:ok, [Edict.Schema.UserRole.t()]} | {:error, atom() | Ecto.Changeset.t()}
   def assign_roles(user_id, role, entities) do
@@ -192,8 +206,13 @@ defmodule Edict do
   @doc """
   Check permission with an entity struct and options, or with a raw entity
   type and ID.
+
+  Only a non-empty string or an integer is an entity ID; anything else, such as
+  `nil` or an array request param, is denied. Options passed where the entity
+  ID belongs raise `ArgumentError`.
   """
-  @spec can?(Document.t(), atom(), struct() | atom(), keyword() | id()) :: boolean()
+  @spec can?(Document.t(), atom(), struct(), keyword()) :: boolean()
+  @spec can?(Document.t(), atom(), atom(), term()) :: boolean()
   def can?(document, action, entity, opts) when is_struct(entity) and is_list(opts) do
     entity_type = Edict.Entity.entity_type(entity)
     entity_id = Edict.Entity.entity_id(entity)
@@ -213,8 +232,17 @@ defmodule Edict do
   def can?(document, action, entity_type, entity_id) when is_atom(entity_type),
     do: can?(document, action, entity_type, entity_id, [])
 
-  @doc "Check permission using entity_type and entity_id directly, with options."
-  @spec can?(Document.t(), atom(), atom(), id(), keyword()) :: boolean()
+  @doc """
+  Check permission using entity_type and entity_id directly, with options.
+
+  The only option is `strong: false`, which checks a strong action against the
+  document instead of the database; other options are ignored, and any other
+  `:strong` value raises
+  `ArgumentError`. Unlike `Edict.Plug`, `Edict.LiveView` and `authorize`,
+  `can?` does not validate the action: an action the entity type does not
+  define simply returns `false`.
+  """
+  @spec can?(Document.t(), atom(), atom(), term(), keyword()) :: boolean()
   def can?(document, action, entity_type, entity_id, opts) do
     Helpers.authorized?(config(), document, action, entity_type, entity_id, opts)
   end
@@ -225,6 +253,8 @@ defmodule Edict do
   Loads (or rebuilds) the authorization document for a user.
 
   Returns the cached document if fresh, or rebuilds from DB if stale/missing.
+  If the cache is unavailable, builds the document from the DB without caching
+  it, emits `[:edict, :cache, :unavailable]` telemetry and logs an error.
   """
   @spec load_document(id()) :: Document.t()
   def load_document(user_id) do
@@ -268,7 +298,19 @@ defmodule Edict do
     :ok
   end
 
-  @doc false
+  @doc """
+  Returns Edict's settings from the `:edict` app config.
+
+  `:repo`, `:pubsub` and `:config_module` are required; `:cache` defaults to
+  `:edict_cache` and `:topic` to `"edict:versions"`.
+  """
+  @spec config() :: %{
+          repo: module(),
+          cache: atom(),
+          pubsub: atom(),
+          topic: String.t(),
+          config_module: module()
+        }
   def config do
     %{
       repo: Application.fetch_env!(:edict, :repo),

@@ -19,7 +19,14 @@ defmodule Edict.Schema.UserRole do
     timestamps(type: :utc_datetime_usec, updated_at: false)
   end
 
-  @type t :: %__MODULE__{}
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          user_id: String.t() | nil,
+          entity_type: String.t() | nil,
+          entity_id: String.t() | nil,
+          role: String.t() | nil,
+          inserted_at: DateTime.t() | nil
+        }
 
   @required_fields ~w(user_id entity_type entity_id role)a
 

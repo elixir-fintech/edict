@@ -3,8 +3,8 @@ defmodule Edict.Enforcement.Helpers do
   Permission check functions.
 
   `can?/4` and `can?/5` read only the given document: no cache or DB hit.
-  `authorized?/6` is what enforcement uses. It checks strong actions against
-  the DB and everything else against the document. Action resolution happens
+  `authorized?/6` is what enforcement and `Edict.can?` use. It checks strong
+  actions against the DB and everything else against the document. Action resolution happens
   at check time using the config module.
   """
 
@@ -83,9 +83,13 @@ defmodule Edict.Enforcement.Helpers do
   A strong action (`strong_action?/1` on the config module) is checked
   against the user's current rows for the entity, never against the cache,
   unless `opts` contains `strong: false`. Every other action is checked
-  against `document`. A `nil` or blank entity ID is always denied.
+  against `document`. Only a non-empty string or an integer is an entity ID;
+  anything else is denied without a DB query. A `nil` document is accepted only
+  for such an invalid ID; with a valid one it raises, so a missing
+  `current_user_roles` never grants.
   """
-  @spec authorized?(map(), Document.t(), atom(), atom(), term(), Enumerable.t()) :: boolean()
+  @spec authorized?(map(), Document.t() | nil, atom(), atom(), term(), Enumerable.t()) ::
+          boolean()
   def authorized?(edict_config, document, action, entity_type, entity_id, opts) do
     opts = strong_opts!(opts)
     config_module = edict_config.config_module
@@ -237,8 +241,6 @@ defmodule Edict.Enforcement.Helpers do
   Reads only `document` and ignores strong actions; enforcement uses
   `authorized?/6`. Only a non-empty string or an integer is an entity ID:
   anything else, such as `nil`, `""` or an array request param, is denied.
-
-  A `nil` or blank entity ID, such as a missing request param, is always denied.
   """
   @spec can?(Document.t(), atom(), atom(), term(), module()) :: boolean()
   def can?(_document, _action, _entity_type, entity_id, _config_module)

@@ -18,12 +18,12 @@ defmodule Edict.Config do
 
         role :admin do
           on :organization, actions: [:read, :write, :delete]
-          on :project, actions: [:read, :write]
+          on :project, actions: [:read, :write, :delete]
         end
       end
 
-  **Note:** Only one module should `use Edict.Config` per application. Multiple config modules
-  will cause duplicate protocol implementations and compilation errors.
+  **Note:** Only one module should `use Edict.Config` per application. Two config modules
+  naming the same `struct:` would generate duplicate `Edict.Entity` implementations.
 
   This compiles into fast lookup functions:
   - `actions_for/2` — actions for a role on an entity type
@@ -33,6 +33,7 @@ defmodule Edict.Config do
   - `strong_action?/1` — whether enforcement always checks an action against the database
   - `entity_types/0` — list of valid entity types
   - `user_id_from_assigns/1` — extract user ID from conn/socket assigns
+  - `on_unauthorized/0` — the denial handler for Plug and LiveView
   """
 
   defmacro __using__(_opts) do
@@ -64,6 +65,12 @@ defmodule Edict.Config do
     end
   end
 
+  @doc """
+  Sets how the user ID is read from conn or socket assigns.
+
+  Default: `fn assigns -> assigns.current_user.id end`, which raises when
+  `current_user` is missing or `nil`, so Edict must run after authentication.
+  """
   defmacro user_from_assigns(func) do
     escaped = Macro.escape(func)
 
@@ -72,6 +79,17 @@ defmodule Edict.Config do
     end
   end
 
+  @doc """
+  Sets the denial handler, a `fn conn_or_socket, context -> ... end` where
+  `context` is `%{}`.
+
+  Default: a `403` `text/plain` "Forbidden" response for a `Plug.Conn`, and
+  `Phoenix.LiveView.redirect(socket, to: "/")` for a LiveView socket. Edict
+  halts the conn itself. A LiveView handler must redirect on mount and after
+  version bumps (`redirect` or `push_navigate`; `push_patch` keeps the LiveView
+  open and raises); for an `authorize` event, a handler that does not redirect
+  just drops the event.
+  """
   defmacro on_unauthorized(func) do
     escaped = Macro.escape(func)
 
@@ -85,7 +103,8 @@ defmodule Edict.Config do
 
   `Edict.Plug`, `Edict.LiveView` and `authorize` guards always check them
   against the database. Only `Edict.can?` may opt out with `strong: false`,
-  for display checks.
+  for display checks. (`Edict.Enforcement.Helpers.can?/5` reads only a document
+  it is given and ignores strong actions; enforcement does not use it.)
 
   Takes a literal list of atoms and may appear at most once. Every listed
   action must be granted by some role.
@@ -106,12 +125,20 @@ defmodule Edict.Config do
     end
   end
 
+  @doc "Groups the `entity/2` declarations."
   defmacro entity_types(do: block) do
     quote do
       unquote(block)
     end
   end
 
+  @doc """
+  Declares an entity type.
+
+  Options:
+    * `:struct` — a struct module; generates its `Edict.Entity` implementation
+    * `:id_field` — the struct field holding the ID (default `:id`)
+  """
   defmacro entity(type, opts \\ []) do
     quote do
       Module.put_attribute(__MODULE__, :edict_entities, {
@@ -122,6 +149,7 @@ defmodule Edict.Config do
     end
   end
 
+  @doc "Declares a role; its `on/2` calls list what it grants. A role may be declared once."
   defmacro role(name, do: block) do
     quote do
       if unquote(name) in Enum.map(@edict_roles, & &1) do
@@ -137,6 +165,12 @@ defmodule Edict.Config do
     end
   end
 
+  @doc """
+  Inside `role/2`: grants `actions:` on an entity type declared in `entity_types/1`.
+
+  Use one `on` per entity type in a role: a second one for the same entity type
+  is ignored (its generated clause never matches).
+  """
   defmacro on(entity_type, opts) do
     actions = opts[:actions] || []
 
@@ -167,31 +201,39 @@ defmodule Edict.Config do
 
     quote do
       @doc "Returns the list of valid entity types."
+      @spec entity_types() :: [atom()]
       def entity_types, do: unquote(entity_type_names)
 
       @doc "Returns `true` if the given entity type is defined."
+      @spec valid_entity_type?(term()) :: boolean()
       def valid_entity_type?(type), do: type in unquote(entity_type_names)
 
       @doc "Returns `true` if the given role is defined."
+      @spec valid_role?(term()) :: boolean()
       def valid_role?(role), do: role in unquote(roles)
 
+      @spec actions_for(atom(), atom()) :: [atom()]
       unquote_splicing(actions_for_clauses(role_actions))
 
       @doc "Returns the actions a role grants on an entity type. Returns `[]` for undefined combinations."
       def actions_for(_role, _entity_type), do: []
 
+      @spec valid_action?(atom(), atom()) :: boolean()
       unquote_splicing(valid_action_clauses(role_actions))
 
       @doc "Returns `true` if the action is valid for the given entity type."
       def valid_action?(_action, _entity_type), do: false
 
       @doc "Returns `true` if the action is strong: enforcement always checks it against the database."
+      @spec strong_action?(atom()) :: boolean()
       def strong_action?(action), do: action in unquote(strong_actions)
 
       @doc "Extracts the user ID from conn/socket assigns."
+      @spec user_id_from_assigns(map()) :: term()
       def user_id_from_assigns(assigns), do: unquote(user_fn).(assigns)
 
       @doc "Returns the configured unauthorized handler function."
+      @spec on_unauthorized() :: (term(), map() -> term())
       def on_unauthorized, do: unquote(unauthorized_fn)
 
       unquote_splicing(protocol_impls(entities))

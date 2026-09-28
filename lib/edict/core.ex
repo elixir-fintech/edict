@@ -2,7 +2,9 @@ defmodule Edict.Core do
   @moduledoc """
   Core operations for managing role assignments.
 
-  Writes roles to the DB; every change is followed by `Edict.Invalidator.invalidate/2`.
+  Writes roles to the DB and follows every change with
+  `Edict.Invalidator.invalidate/2`, except `insert_role/5` and `delete_role/5`,
+  which leave invalidation to `Edict.Multi` so it can wait for the commit.
 
   All functions take a config map with:
   - `:repo` — the Ecto repo
@@ -102,8 +104,8 @@ defmodule Edict.Core do
   @doc "Revokes all roles on an entity for all users. Use for cleanup when an entity is deleted."
   @spec revoke_entity(map(), String.t(), String.t()) :: {:ok, non_neg_integer()}
   def revoke_entity(config, entity_type, entity_id) do
-    # One DELETE ... RETURNING: invalidations come from the rows actually
-    # deleted, including any assigned while the revocation was running.
+    # One DELETE ... RETURNING: invalidations come from exactly the rows
+    # deleted, so no user is missed as with a separate SELECT, then DELETE.
     {count, user_ids} =
       config.repo.delete_all(
         from ur in UserRole,

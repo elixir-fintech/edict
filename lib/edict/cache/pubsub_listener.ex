@@ -2,9 +2,12 @@ defmodule Edict.Cache.PubSubListener do
   @moduledoc """
   GenServer that listens for cross-node version bump broadcasts.
 
-  When a role change happens on another node, this process receives the
-  PubSub message and updates the local Cachex version so the next
-  permission check detects the staleness.
+  For every role change, on any node including its own, this process receives
+  the PubSub message and copies the new version into the local Cachex, so the
+  next permission check detects the staleness.
+
+  Options: `:cache` and `:pubsub` (required), `:topic` (default `"edict:versions"`)
+  and `:name` (default `Edict.Cache.PubSubListener`).
   """
 
   use GenServer

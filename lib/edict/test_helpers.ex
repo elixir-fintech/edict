@@ -9,8 +9,12 @@ defmodule Edict.TestHelpers do
       Edict.TestHelpers.refute_can("user-1", :billing, org)
   """
 
-  @doc "Assigns a role to a user on an entity. Uses the Edict.Entity protocol."
-  @spec grant_role(String.t(), atom(), struct()) :: :ok
+  @doc """
+  Assigns a role to a user on an entity. Uses the Edict.Entity protocol.
+
+  Raises `MatchError` if the assignment fails, for example for an undefined role.
+  """
+  @spec grant_role(Edict.id(), atom(), struct()) :: :ok
   def grant_role(user_id, role, entity) do
     entity_type = Edict.Entity.entity_type(entity)
     entity_id = Edict.Entity.entity_id(entity)
@@ -20,7 +24,7 @@ defmodule Edict.TestHelpers do
   end
 
   @doc "Asserts that a user has the given permission on an entity."
-  @spec assert_can(String.t(), atom(), struct()) :: :ok
+  @spec assert_can(Edict.id(), atom(), struct()) :: :ok
   def assert_can(user_id, action, entity) do
     doc = Edict.load_document(user_id)
 
@@ -39,7 +43,7 @@ defmodule Edict.TestHelpers do
   end
 
   @doc "Asserts that a user does NOT have the given permission on an entity."
-  @spec refute_can(String.t(), atom(), struct()) :: :ok
+  @spec refute_can(Edict.id(), atom(), struct()) :: :ok
   def refute_can(user_id, action, entity) do
     doc = Edict.load_document(user_id)
 

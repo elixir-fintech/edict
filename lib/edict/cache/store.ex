@@ -53,7 +53,7 @@ defmodule Edict.Cache.Store do
     {:ok, version}
   end
 
-  @doc "Returns the current version for a user, or `0` if none is set."
+  @doc "Returns the current version for a user, `0` if none is set, or the cache error."
   @spec get_version(atom(), String.t()) :: {:ok, version()} | {:error, term()}
   def get_version(cache, user_id) do
     case Cachex.get(cache, {:auth_version, user_id}) do

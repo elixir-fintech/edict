@@ -8,6 +8,14 @@ defmodule Edict.Enforcement.Authorize do
         use Phoenix.LiveView
         use Edict.Enforcement.Authorize
 
+        # Assigns current_user_roles; the guards read it
+        on_mount {Edict.LiveView, action: :read, entity_type: :project, param: "project_id"}
+
+        def mount(%{"project_id" => project_id}, _session, socket) do
+          # The guards read the entity ID from this assign
+          {:ok, assign(socket, :project_id, project_id)}
+        end
+
         authorize "delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project
         authorize "update", action: :write, entity_from_assigns: :project_id, entity_type: :project
 
@@ -23,6 +31,13 @@ defmodule Edict.Enforcement.Authorize do
   before your `handle_event/3` runs. A denied event calls `on_unauthorized` and
   never reaches it; undeclared events pass through. LiveComponents are not
   supported.
+
+  The guards need two assigns: `current_user_roles`, set by `on_mount
+  {Edict.LiveView, ...}`, and the key named by `:entity_from_assigns` (for
+  example `:project_id`), which the LiveView assigns itself. Without
+  `current_user_roles` a declared event fails closed: it raises, or is denied
+  through `on_unauthorized` when the assigned key holds no valid entity ID. The config
+  comes from `socket.assigns[:edict_config]`, falling back to `Edict.config/0`.
 
   > #### Earlier hooks run first {: .warning}
   >
