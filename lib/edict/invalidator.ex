@@ -27,13 +27,17 @@ defmodule Edict.Invalidator do
     # Global topic for PubSubListener (cross-node cache invalidation) and the
     # per-user topic for LiveView hooks. Both are always attempted; the DB change
     # has already committed, so a failure is reported, not rolled back.
-    Enum.each(
-      [config.topic, "edict:user:#{user_id}"],
-      &broadcast(config.pubsub, &1, user_id, message)
-    )
+    [
+      {config.topic, "other nodes may serve user #{user_id}'s old roles until the TTL expires"},
+      {"edict:user:#{user_id}",
+       "user #{user_id}'s open LiveViews keep their old roles while open"}
+    ]
+    |> Enum.each(fn {topic, effect} ->
+      broadcast(config.pubsub, topic, user_id, message, effect)
+    end)
   end
 
-  defp broadcast(pubsub, topic, user_id, message) do
+  defp broadcast(pubsub, topic, user_id, message, effect) do
     with {:error, reason} <- Phoenix.PubSub.broadcast(pubsub, topic, message) do
       :telemetry.execute([:edict, :invalidation, :broadcast_failed], %{count: 1}, %{
         user_id: user_id,
@@ -42,8 +46,7 @@ defmodule Edict.Invalidator do
       })
 
       Logger.error(
-        "Edict invalidation broadcast failed on #{topic} (#{inspect(reason)}); " <>
-          "other nodes may serve user #{user_id}'s old roles until the TTL expires"
+        "Edict invalidation broadcast failed on #{topic} (#{inspect(reason)}); #{effect}"
       )
     end
   end

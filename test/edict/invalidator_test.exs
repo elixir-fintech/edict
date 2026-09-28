@@ -50,4 +50,24 @@ defmodule Edict.InvalidatorTest do
       assert log =~ "Edict invalidation broadcast failed"
     end
   end
+
+  describe "invalidate/2 when the per-user broadcast fails" do
+    test "logs that open LiveViews keep their roles", %{config: config} do
+      failing_pubsub = :"failing_user_pubsub_#{System.unique_integer([:positive])}"
+
+      start_supervised!(
+        Supervisor.child_spec(
+          {Phoenix.PubSub, name: failing_pubsub, adapter: Edict.Test.FailingUserTopicAdapter},
+          id: failing_pubsub
+        )
+      )
+
+      log =
+        capture_log(fn ->
+          Invalidator.invalidate(Map.put(config, :pubsub, failing_pubsub), "user-1")
+        end)
+
+      assert log =~ "open LiveViews"
+    end
+  end
 end
