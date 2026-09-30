@@ -73,7 +73,12 @@ defmodule Edict.Enforcement.LiveView do
     Helpers.validate_action!(edict_config.config_module, opts.action, opts.entity_type)
 
     policy = {opts.action, opts.entity_type, entity_id(opts, params)}
+    mount(socket, edict_config, user_id, policy)
+  end
 
+  defp mount(socket, edict_config, nil, _policy), do: unauthorized(socket, edict_config)
+
+  defp mount(socket, edict_config, user_id, policy) do
     # Subscribe before loading: a revocation that lands while mounting then
     # waits in the mailbox for the version hook instead of being missed.
     socket = maybe_subscribe(socket, edict_config, user_id)
@@ -92,13 +97,15 @@ defmodule Edict.Enforcement.LiveView do
   defp entity_id(%{entity_from: entity_from}, params), do: entity_from.(params)
 
   defp authorize(socket, edict_config, document, {action, entity_type, entity_id}) do
-    config_module = edict_config.config_module
-
     if Helpers.authorized?(edict_config, document, action, entity_type, entity_id, []) do
       {:cont, assign(socket, :current_user_roles, document)}
     else
-      {:halt, config_module.on_unauthorized().(socket, %{})}
+      unauthorized(socket, edict_config)
     end
+  end
+
+  defp unauthorized(socket, edict_config) do
+    {:halt, edict_config.config_module.on_unauthorized().(socket, %{})}
   end
 
   defp maybe_subscribe(socket, edict_config, user_id) do

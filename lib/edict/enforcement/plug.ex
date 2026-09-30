@@ -51,12 +51,13 @@ defmodule Edict.Enforcement.Plug do
     Helpers.validate_action!(edict_config.config_module, opts.action, entity_type)
     entity_id = entity_id(opts, conn)
 
-    document = Helpers.load_document(edict_config, user_id)
-
-    if Helpers.authorized?(edict_config, document, opts.action, entity_type, entity_id, []) do
+    with user_id when is_binary(user_id) <- user_id,
+         document = Helpers.load_document(edict_config, user_id),
+         true <-
+           Helpers.authorized?(edict_config, document, opts.action, entity_type, entity_id, []) do
       Plug.Conn.assign(conn, :current_user_roles, document)
     else
-      unauthorized(conn, edict_config.config_module)
+      _denied -> unauthorized(conn, edict_config.config_module)
     end
   end
 

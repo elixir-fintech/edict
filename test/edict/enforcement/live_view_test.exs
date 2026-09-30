@@ -43,7 +43,7 @@ defmodule Edict.Enforcement.LiveViewTest do
 
     params = %{"id" => "7"}
 
-    %{opts: opts, socket: socket, params: params}
+    %{opts: opts, socket: socket, params: params, cache: cache_name}
   end
 
   test "authorized user gets :cont with document", %{
@@ -163,5 +163,39 @@ defmodule Edict.Enforcement.LiveViewTest do
     assert_raise ArgumentError, ~r/:aprove/, fn ->
       EdictLiveView.on_mount(typo_opts, params, %{}, socket)
     end
+  end
+
+  # Tables created without the CHECK constraints can hold rows for a blank
+  # user; a request without a user must never be checked against them.
+  defp seed_blank_user_document(cache) do
+    doc = %Document{user_id: "", version: 1, roles: %{{:project, "7"} => [:admin]}}
+    Store.put_document(cache, "", doc)
+    Store.set_version(cache, "", 1)
+  end
+
+  test "a mount with a nil user ID is halted", %{
+    opts: opts,
+    socket: socket,
+    params: params,
+    cache: cache
+  } do
+    seed_blank_user_document(cache)
+    socket = Phoenix.Component.assign(socket, :current_user, %{id: nil})
+
+    assert {:halt, %{redirected: {:redirect, _}}} =
+             EdictLiveView.on_mount(opts, params, %{}, socket)
+  end
+
+  test "a mount with a blank user ID is halted", %{
+    opts: opts,
+    socket: socket,
+    params: params,
+    cache: cache
+  } do
+    seed_blank_user_document(cache)
+    socket = Phoenix.Component.assign(socket, :current_user, %{id: ""})
+
+    assert {:halt, %{redirected: {:redirect, _}}} =
+             EdictLiveView.on_mount(opts, params, %{}, socket)
   end
 end

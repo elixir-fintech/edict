@@ -133,13 +133,15 @@ defmodule Edict.Enforcement.Helpers do
   @doc """
   Returns the Edict config for a check and the current user's ID.
 
-  The config comes from `opts`, then `assigns`, then the app env.
+  The config comes from `opts`, then `assigns`, then the app env. A blank user
+  ID (`nil` or `""`) is returned as `nil`: there is no user to check, so the
+  caller denies without loading a document.
   """
-  @spec resolve(map(), map()) :: {map(), String.t()}
+  @spec resolve(map(), map()) :: {map(), String.t() | nil}
   def resolve(opts, assigns) do
     edict_config = opts[:edict_config] || assigns[:edict_config] || Edict.config()
     user_id = edict_config.config_module.user_id_from_assigns(assigns) |> to_string()
-    {edict_config, user_id}
+    {edict_config, if(user_id == "", do: nil, else: user_id)}
   end
 
   @doc """

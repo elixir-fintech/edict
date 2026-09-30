@@ -181,4 +181,46 @@ defmodule Edict.Enforcement.PlugTest do
 
     assert_raise ArgumentError, ~r/:aprove/, fn -> EdictPlug.call(conn, typo_opts) end
   end
+
+  # Tables created without the CHECK constraints can hold rows for a blank
+  # user; a request without a user must never be checked against them.
+  defp seed_blank_user_document(cache) do
+    doc = %Document{user_id: "", version: 1, roles: %{{:project, "7"} => [:admin]}}
+    Store.put_document(cache, "", doc)
+    Store.set_version(cache, "", 1)
+  end
+
+  test "a request with a nil user ID is halted with 403", %{
+    edict_config: edict_config,
+    opts: opts
+  } do
+    seed_blank_user_document(edict_config.cache)
+
+    conn =
+      Plug.Test.conn(:get, "/projects/7", %{})
+      |> Map.put(:params, %{"id" => "7"})
+      |> Plug.Conn.assign(:current_user, %{id: nil})
+
+    result = EdictPlug.call(conn, opts)
+
+    assert result.halted
+    assert result.status == 403
+  end
+
+  test "a request with a blank user ID is halted with 403", %{
+    edict_config: edict_config,
+    opts: opts
+  } do
+    seed_blank_user_document(edict_config.cache)
+
+    conn =
+      Plug.Test.conn(:get, "/projects/7", %{})
+      |> Map.put(:params, %{"id" => "7"})
+      |> Plug.Conn.assign(:current_user, %{id: ""})
+
+    result = EdictPlug.call(conn, opts)
+
+    assert result.halted
+    assert result.status == 403
+  end
 end
