@@ -123,7 +123,7 @@ defmodule Edict.Enforcement.AuthorizeTest do
   test "a declared event without current_user_roles fails closed", %{edict_config: edict_config} do
     socket = build_socket(%{project_id: "7", edict_config: edict_config})
 
-    assert_raise FunctionClauseError, fn -> run_hook("delete", socket) end
+    assert_raise ArgumentError, ~r/current_user_roles/, fn -> run_hook("delete", socket) end
   end
 
   test "use registers the hook as an on_mount" do

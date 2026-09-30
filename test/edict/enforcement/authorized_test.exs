@@ -116,4 +116,20 @@ defmodule Edict.Enforcement.AuthorizedTest do
 
     refute Helpers.authorized?(config, empty_doc, :approve_transfer, :account, "7", [])
   end
+
+  test "a nil document with a valid ID raises a descriptive error for a strong action", %{
+    config: config
+  } do
+    assert_raise ArgumentError, ~r/current_user_roles/, fn ->
+      Helpers.authorized?(config, nil, :approve_transfer, :account, "7", [])
+    end
+  end
+
+  test "a nil document with a valid ID raises a descriptive error for a regular action", %{
+    config: config
+  } do
+    assert_raise ArgumentError, ~r/current_user_roles/, fn ->
+      Helpers.authorized?(config, nil, :read, :account, "7", [])
+    end
+  end
 end

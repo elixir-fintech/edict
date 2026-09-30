@@ -85,11 +85,19 @@ defmodule Edict.Enforcement.Helpers do
   unless `opts` contains `strong: false`. Every other action is checked
   against `document`. Only a non-empty string or an integer is an entity ID;
   anything else is denied without a DB query. A `nil` document is accepted only
-  for such an invalid ID; with a valid one it raises, so a missing
-  `current_user_roles` never grants.
+  for such an invalid ID; with a valid one it raises `ArgumentError`, so a
+  missing `current_user_roles` never grants.
   """
   @spec authorized?(map(), Document.t() | nil, atom(), atom(), term(), Enumerable.t()) ::
           boolean()
+  def authorized?(_edict_config, nil, action, entity_type, entity_id, _opts)
+      when is_entity_id(entity_id) do
+    raise ArgumentError,
+          "cannot check #{inspect(action)} on #{inspect(entity_type)} #{inspect(entity_id)} " <>
+            "without an authorization document: current_user_roles is not assigned. " <>
+            "Load it with Edict.Plug or on_mount {Edict.LiveView, ...}"
+  end
+
   def authorized?(edict_config, document, action, entity_type, entity_id, opts) do
     opts = strong_opts!(opts)
     config_module = edict_config.config_module
