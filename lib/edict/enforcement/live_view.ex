@@ -103,7 +103,7 @@ defmodule Edict.Enforcement.LiveView do
 
   defp maybe_subscribe(socket, edict_config, user_id) do
     if Phoenix.LiveView.connected?(socket) do
-      Phoenix.PubSub.subscribe(edict_config.pubsub, "edict:user:#{user_id}")
+      Phoenix.PubSub.subscribe(edict_config.pubsub, Edict.Invalidator.user_topic(user_id))
     end
 
     socket

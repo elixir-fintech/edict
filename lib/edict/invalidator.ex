@@ -29,13 +29,16 @@ defmodule Edict.Invalidator do
     # has already committed, so a failure is reported, not rolled back.
     [
       {config.topic, "other nodes may serve user #{user_id}'s old roles until the TTL expires"},
-      {"edict:user:#{user_id}",
-       "user #{user_id}'s open LiveViews keep their old roles while open"}
+      {user_topic(user_id), "user #{user_id}'s open LiveViews keep their old roles while open"}
     ]
     |> Enum.each(fn {topic, effect} ->
       broadcast(config.pubsub, topic, user_id, message, effect)
     end)
   end
+
+  @doc "Returns the PubSub topic that carries `user_id`'s version bumps to their LiveViews."
+  @spec user_topic(String.t()) :: String.t()
+  def user_topic(user_id), do: "edict:user:#{user_id}"
 
   defp broadcast(pubsub, topic, user_id, message, effect) do
     with {:error, reason} <- Phoenix.PubSub.broadcast(pubsub, topic, message) do
