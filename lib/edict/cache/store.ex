@@ -49,8 +49,20 @@ defmodule Edict.Cache.Store do
   @spec bump_version(atom(), String.t()) :: {:ok, version()}
   def bump_version(cache, user_id) do
     version = make_ref()
-    :ok = set_version(cache, user_id, version)
+    :ok = invalidate(cache, user_id, version)
     {:ok, version}
+  end
+
+  @doc """
+  Sets a new version for a user and drops their cached document.
+
+  Dropping the document means no version, replayed or forged, can make an old
+  document current again: the next load rebuilds it from the DB.
+  """
+  @spec invalidate(atom(), String.t(), version()) :: :ok
+  def invalidate(cache, user_id, version) do
+    Cachex.del(cache, {:auth_doc, user_id})
+    set_version(cache, user_id, version)
   end
 
   @doc "Returns the current version for a user, `0` if none is set, or the cache error."

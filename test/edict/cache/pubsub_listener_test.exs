@@ -22,38 +22,101 @@ defmodule Edict.Cache.PubSubListenerTest do
   end
 
   describe "handling version bump broadcasts" do
+    test "drops the cached document when receiving a broadcast", %{
+      cache: cache,
+      pubsub: pubsub
+    } do
+      doc = %Edict.Cache.Document{user_id: "user-1", version: 0, roles: %{}}
+      Store.put_document(cache, "user-1", doc)
+
+      Phoenix.PubSub.broadcast(
+        pubsub,
+        "edict:versions",
+        {:edict_version_bump, "user-1", make_ref()}
+      )
+
+      Process.sleep(50)
+
+      assert :miss = Store.get_document(cache, "user-1")
+    end
+
+    test "ignores a bump whose version is not a reference", %{cache: cache, pubsub: pubsub} do
+      version = make_ref()
+      Store.set_version(cache, "user-1", version)
+
+      Phoenix.PubSub.broadcast(pubsub, "edict:versions", {:edict_version_bump, "user-1", 0})
+
+      Process.sleep(50)
+
+      assert {:ok, ^version} = Store.get_version(cache, "user-1")
+    end
+
+    # A document built before any role change is tagged 0; replaying 0 after a
+    # revocation must not make that document current again.
+    test "a replayed old version cannot resurrect a revoked document", %{
+      cache: cache,
+      pubsub: pubsub
+    } do
+      doc = %Edict.Cache.Document{
+        user_id: "user-1",
+        version: 0,
+        roles: %{{:project, "7"} => [:admin]}
+      }
+
+      Store.put_document(cache, "user-1", doc)
+      {:ok, _version} = Store.bump_version(cache, "user-1")
+
+      Phoenix.PubSub.broadcast(pubsub, "edict:versions", {:edict_version_bump, "user-1", 0})
+
+      Process.sleep(50)
+
+      assert :miss = Store.get_document(cache, "user-1")
+    end
+
     test "updates local cache version when receiving a broadcast", %{
       cache: cache,
       pubsub: pubsub
     } do
-      Store.set_version(cache, "user-1", 5)
+      Store.set_version(cache, "user-1", make_ref())
+      new_version = make_ref()
 
-      Phoenix.PubSub.broadcast(pubsub, "edict:versions", {:edict_version_bump, "user-1", 10})
+      Phoenix.PubSub.broadcast(
+        pubsub,
+        "edict:versions",
+        {:edict_version_bump, "user-1", new_version}
+      )
 
       Process.sleep(50)
 
-      assert {:ok, 10} = Store.get_version(cache, "user-1")
+      assert {:ok, ^new_version} = Store.get_version(cache, "user-1")
     end
 
     test "handles version bump for user with no prior version", %{
       cache: cache,
       pubsub: pubsub
     } do
-      Phoenix.PubSub.broadcast(pubsub, "edict:versions", {:edict_version_bump, "new-user", 1})
+      new_version = make_ref()
+
+      Phoenix.PubSub.broadcast(
+        pubsub,
+        "edict:versions",
+        {:edict_version_bump, "new-user", new_version}
+      )
 
       Process.sleep(50)
 
-      assert {:ok, 1} = Store.get_version(cache, "new-user")
+      assert {:ok, ^new_version} = Store.get_version(cache, "new-user")
     end
 
     test "ignores unrelated messages", %{cache: cache, pubsub: pubsub} do
-      Store.set_version(cache, "user-1", 5)
+      version = make_ref()
+      Store.set_version(cache, "user-1", version)
 
       Phoenix.PubSub.broadcast(pubsub, "edict:versions", {:unrelated, "data"})
 
       Process.sleep(50)
 
-      assert {:ok, 5} = Store.get_version(cache, "user-1")
+      assert {:ok, ^version} = Store.get_version(cache, "user-1")
     end
   end
 end

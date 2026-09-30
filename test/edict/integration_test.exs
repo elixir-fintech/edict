@@ -446,10 +446,12 @@ defmodule Edict.IntegrationTest do
       insert_role!("user-1", "editor", "project", "7")
 
       # Broadcast version bump (as if from another node)
+      new_version = make_ref()
+
       Phoenix.PubSub.broadcast(
         pubsub,
         "edict:versions",
-        {:edict_version_bump, "user-1", 2}
+        {:edict_version_bump, "user-1", new_version}
       )
 
       # Wait for PubSubListener to process
@@ -457,9 +459,9 @@ defmodule Edict.IntegrationTest do
 
       # Verify local version was bumped
       {:ok, local_version} = Store.get_version(cache, "user-1")
-      assert local_version == 2
+      assert local_version == new_version
 
-      # Next load_document detects mismatch (doc.version=1, current=2) and rebuilds
+      # Next load_document finds no cached document and rebuilds
       new_doc = Helpers.load_document(config, "user-1")
       roles = Document.roles_for(new_doc, :project, "7")
       assert :admin in roles

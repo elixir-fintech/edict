@@ -34,8 +34,10 @@ defmodule Edict.Cache.PubSubListener do
   end
 
   @impl true
-  def handle_info({:edict_version_bump, user_id, new_version}, state) do
-    Edict.Cache.Store.set_version(state.cache, user_id, new_version)
+  # Edict's versions are always references: anything else is not a bump.
+  def handle_info({:edict_version_bump, user_id, new_version}, state)
+      when is_reference(new_version) do
+    Edict.Cache.Store.invalidate(state.cache, user_id, new_version)
     {:noreply, state}
   end
 

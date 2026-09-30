@@ -364,9 +364,9 @@ Each user has a cached authorization document containing their roles grouped by 
 **On role change:**
 
 1. DB write
-2. Version bump in local Cachex
+2. Version bump in local Cachex, which drops the user's cached document
 3. PubSub broadcast to all nodes (global topic) and the user's LiveViews (per-user topic)
-4. Other nodes copy the new version via `PubSubListener`
+4. Other nodes set the new version and drop the document via `PubSubListener`
 
 **On permission check:**
 
@@ -377,6 +377,12 @@ Each user has a cached authorization document containing their roles grouped by 
 
 Cached documents and versions expire after the TTL (default: 10 minutes), which repairs a node
 that missed a PubSub message.
+
+**PubSub is a trust boundary.** Edict trusts every message on its topics. A bump can never
+restore an old document, because each one drops the cached document, but anyone who can
+broadcast on the PubSub can force DB rebuilds. Use a PubSub server that only your app
+broadcasts on; don't share it, or Edict's topics, with other apps or an external broker
+that other systems can publish to.
 
 ### Consistency guarantees
 

@@ -99,4 +99,26 @@ defmodule Edict.Cache.StoreTest do
       assert ttl in 1..:timer.seconds(5)
     end
   end
+
+  describe "invalidate/3" do
+    test "sets the version and drops the cached document", %{cache: cache} do
+      doc = %Edict.Cache.Document{user_id: "user-1", version: 0, roles: %{}}
+      :ok = Store.put_document(cache, "user-1", doc)
+      version = make_ref()
+
+      :ok = Store.invalidate(cache, "user-1", version)
+
+      assert {:ok, ^version} = Store.get_version(cache, "user-1")
+      assert :miss = Store.get_document(cache, "user-1")
+    end
+  end
+
+  test "bump_version drops the cached document", %{cache: cache} do
+    doc = %Edict.Cache.Document{user_id: "user-1", version: 0, roles: %{}}
+    :ok = Store.put_document(cache, "user-1", doc)
+
+    {:ok, _version} = Store.bump_version(cache, "user-1")
+
+    assert :miss = Store.get_document(cache, "user-1")
+  end
 end
