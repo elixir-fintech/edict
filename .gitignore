@@ -20,3 +20,9 @@ erl_crash.dump
 
 #doc folder
 /doc
+
+# env 
+.envrc
+
+# opendoc
+opencode.json
