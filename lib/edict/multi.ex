@@ -103,7 +103,7 @@ defmodule Edict.Multi do
                user_id,
                to_string(role),
                to_string(entity_type),
-               Edict.Entity.entity_id(entity)
+               to_string(Edict.Entity.entity_id(entity))
              ) do
         {:ok, {__MODULE__, changed_user_id(user_id, result), value}}
       end
