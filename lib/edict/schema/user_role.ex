@@ -1,6 +1,6 @@
 defmodule Edict.Schema.UserRole do
   @moduledoc """
-  Ecto schema for the `user_roles` table.
+  Ecto schema for the `edict_user_roles` table.
 
   Stores explicit role assignments: which user has which role on which entity.
   """
@@ -10,7 +10,7 @@ defmodule Edict.Schema.UserRole do
 
   @primary_key {:id, :binary_id, autogenerate: true}
 
-  schema "user_roles" do
+  schema "edict_user_roles" do
     field :user_id, :string
     field :entity_type, :string
     field :entity_id, :string
@@ -19,7 +19,14 @@ defmodule Edict.Schema.UserRole do
     timestamps(type: :utc_datetime_usec, updated_at: false)
   end
 
-  @type t :: %__MODULE__{}
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          user_id: String.t() | nil,
+          entity_type: String.t() | nil,
+          entity_id: String.t() | nil,
+          role: String.t() | nil,
+          inserted_at: DateTime.t() | nil
+        }
 
   @required_fields ~w(user_id entity_type entity_id role)a
 

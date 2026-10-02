@@ -7,7 +7,7 @@ defmodule Edict.Multi do
 
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:org, Organization.changeset(%Organization{}, attrs))
-      |> Edict.Multi.assign_role(:admin, fn %{org: org} -> {user.id, :admin, org} end)
+      |> Edict.Multi.assign_role(:creator_role, fn %{org: org} -> {user.id, :admin, org} end)
       |> Edict.Multi.transaction()
 
   Steps write roles without touching the cache. `transaction/1` runs the Multi
@@ -17,10 +17,17 @@ defmodule Edict.Multi do
   Edict steps only run through `transaction/1`: under a plain `Repo.transaction/1`
   they fail with `:not_run_by_edict` and the transaction rolls back. Plain role
   writes such as `Edict.assign_role/4` raise inside a transaction.
+
+  A step fails, rolling the transaction back, with `:invalid_role` or
+  `:invalid_entity_type` for a role or entity type the config does not define,
+  with an `Ecto.Changeset` for an invalid assignment, or with `:not_run_by_edict`.
+  An entity struct without an `Edict.Entity` implementation, or a `change` of
+  another shape, raises instead, which also rolls the transaction back.
   """
 
   alias Ecto.Multi
   alias Edict.Core
+  alias Edict.Invalidator
 
   @marker {__MODULE__, :run_by_edict}
 
@@ -50,7 +57,7 @@ defmodule Edict.Multi do
 
   @doc """
   Runs the Multi in a transaction, then invalidates every user whose roles
-  changed. Returns the same shape as `Ecto.Repo.transaction/2`.
+  changed. Returns the same shape as `c:Ecto.Repo.transaction/2`.
 
   Raises `ArgumentError` inside another transaction, since that one would
   commit only after the invalidation.
@@ -71,7 +78,7 @@ defmodule Edict.Multi do
     |> config.repo.transaction()
     |> case do
       {:ok, changes} ->
-        changes |> changed_user_ids() |> Enum.each(&Core.invalidate(config, &1))
+        changes |> changed_user_ids() |> Enum.each(&Invalidator.invalidate(config, &1))
         {:ok, unwrap(changes)}
 
       {:error, name, value, changes} ->
@@ -96,7 +103,7 @@ defmodule Edict.Multi do
                user_id,
                to_string(role),
                to_string(entity_type),
-               Edict.Entity.entity_id(entity)
+               to_string(Edict.Entity.entity_id(entity))
              ) do
         {:ok, {__MODULE__, changed_user_id(user_id, result), value}}
       end

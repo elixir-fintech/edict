@@ -19,6 +19,8 @@ defmodule Edict.Cache.Document do
   Builds a document from a list of role assignment maps.
 
   Each map must have `:entity_type`, `:entity_id`, and `:role` keys (strings).
+  Rows whose entity type or role is not an existing atom are dropped, which is
+  why `Edict.Supervisor` loads the config module at startup.
   """
   @spec new(String.t(), [map()], Edict.Cache.Store.version()) :: t()
   def new(user_id, role_rows, version) do

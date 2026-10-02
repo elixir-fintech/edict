@@ -3,7 +3,9 @@ defprotocol Edict.Entity do
   Protocol for extracting entity identity from structs.
 
   Implementations are generated automatically by `Edict.Config` for entities
-  that declare a `struct:` option. Implement manually for custom ID extraction.
+  that declare a `struct:` option; use `id_field:` when the ID is not in `:id`.
+  Implement it manually for a struct not declared with `struct:`, or when the ID
+  needs custom extraction; otherwise the fallback raises `Protocol.UndefinedError`.
   """
 
   @fallback_to_any true

@@ -1,13 +1,13 @@
 defmodule Mix.Tasks.Edict.Install do
   @moduledoc """
-  Generates the Edict migration for the `user_roles` table.
+  Generates the Edict migration for the `edict_user_roles` table.
 
       mix edict.install
   """
 
   use Mix.Task
 
-  @shortdoc "Generates Edict migration for user_roles table"
+  @shortdoc "Generates Edict migration for the edict_user_roles table"
 
   @impl true
   def run(_args) do

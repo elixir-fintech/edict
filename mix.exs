@@ -34,10 +34,11 @@ defmodule Edict.MixProject do
       {:phoenix, "~> 1.7"},
       {:phoenix_live_view, "~> 1.0"},
       {:cachex, "~> 4.0"},
+      {:telemetry, "~> 1.0"},
 
       # Dev/test
       {:postgrex, ">= 0.0.0", only: :test},
-      {:cabbage, "~> 0.4", only: :test},
+      {:cabbage, github: "elixir-fintech/cabbage", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]

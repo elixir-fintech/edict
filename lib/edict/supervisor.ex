@@ -6,12 +6,20 @@ defmodule Edict.Supervisor do
   - Cachex instance for authorization documents
   - PubSub listener for cross-node version bumps
 
+  On start it validates the configured config module with
+  `Edict.validate_config!/1`, which also loads it.
+
   ## Configuration
 
       config :edict,
         repo: MyApp.Repo,
         config_module: MyApp.AuthConfig,
         pubsub: MyApp.PubSub
+
+      # Optional, with defaults:
+      # cache: :edict_cache,
+      # topic: "edict:versions",
+      # ttl: :timer.minutes(10)
 
   ## Usage
 
@@ -22,32 +30,38 @@ defmodule Edict.Supervisor do
         MyAppWeb.Endpoint
       ]
 
-  Or override via opts: `{Edict.Supervisor, pubsub: MyApp.PubSub}`
+  It takes no options: Edict reads all settings from the `:edict` app config.
   """
 
   use Supervisor
 
-  @doc "Starts the Edict supervisor."
+  @doc "Starts the Edict supervisor. It takes no options; pass none (or `[]`)."
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts \\ []) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
   @impl true
-  def init(opts) do
-    pubsub = Keyword.get(opts, :pubsub) || Application.fetch_env!(:edict, :pubsub)
-    cache_name = Keyword.get(opts, :cache_name, Application.get_env(:edict, :cache, :edict_cache))
-    topic = Keyword.get(opts, :topic, Application.get_env(:edict, :topic, "edict:versions"))
+  def init([]) do
+    config = Edict.config()
+
+    # Loads the config module at startup: documents keep only roles whose atoms
+    # exist, and they exist once the module is loaded.
+    Edict.validate_config!(config.config_module)
 
     children = [
-      {Cachex, name: cache_name},
-      {Edict.Cache.PubSubListener, cache: cache_name, pubsub: pubsub, topic: topic}
+      {Cachex, name: config.cache},
+      {Edict.Cache.PubSubListener,
+       cache: config.cache, pubsub: config.pubsub, topic: config.topic}
     ]
 
     Supervisor.init(children, strategy: :one_for_one, max_restarts: 5, max_seconds: 30)
   end
 
-  @doc "Returns the default cache name."
-  @spec cache_name() :: atom()
-  def cache_name, do: :edict_cache
+  # Checks read their settings through Edict.config/0, so options given here
+  # would configure a supervisor nothing else agrees with.
+  def init(_opts) do
+    raise ArgumentError,
+          "Edict.Supervisor takes no options; configure :edict in your app config"
+  end
 end

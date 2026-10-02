@@ -50,4 +50,19 @@ defmodule Edict.TestHelpersTest do
       Edict.TestHelpers.refute_can("user-1", :read, org)
     end
   end
+
+  describe "assert_can/3 with a strong action" do
+    test "reports the roles found in the database" do
+      Application.put_env(:edict, :config_module, Edict.Test.StrongConfig)
+      account = %Edict.Test.Account{id: "7"}
+      Edict.TestHelpers.grant_role("alice", :treasurer, account)
+      Edict.load_document("alice")
+      # Revoke without notifying the cache: the cached document still grants
+      Edict.Test.Repo.delete_all(Edict.Schema.UserRole)
+
+      assert_raise ExUnit.AssertionError, ~r/Roles in the database: \[\]/, fn ->
+        Edict.TestHelpers.assert_can("alice", :approve_transfer, account)
+      end
+    end
+  end
 end

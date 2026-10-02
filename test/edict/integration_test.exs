@@ -1,7 +1,25 @@
 defmodule Edict.IntegrationTest do
   use ExUnit.Case
 
+  defmodule StrongEventLiveView do
+    use Phoenix.LiveView
+    use Edict.Enforcement.Authorize
+
+    authorize("approve",
+      action: :approve_transfer,
+      entity_from_assigns: :account_id,
+      entity_type: :account
+    )
+
+    def render(assigns), do: ~H""
+
+    def handle_event("approve", _params, socket), do: {:noreply, socket}
+  end
+
+  import ExUnit.CaptureLog
+
   alias Edict.Cache.{Document, PubSubListener, Store}
+  alias Edict.Enforcement.Authorize
   alias Edict.Enforcement.Helpers
   alias Edict.Enforcement.LiveView, as: EdictLiveView
   alias Edict.Enforcement.Plug, as: EdictPlug
@@ -72,7 +90,7 @@ defmodule Edict.IntegrationTest do
       # Extract the attached hook function and invoke it
       [hook] = mounted_socket.private.lifecycle.handle_info
 
-      {:cont, updated_socket} =
+      {:halt, updated_socket} =
         hook.function.({:edict_version_bump, "user-1", 2}, mounted_socket)
 
       # Verify the document was reloaded with the new role
@@ -80,6 +98,240 @@ defmodule Edict.IntegrationTest do
       roles = Document.roles_for(updated_doc, :project, "7")
       assert :admin in roles
       assert :editor in roles
+    end
+
+    test "receives a revocation that lands while the connected LiveView mounts", %{
+      config: config
+    } do
+      start_supervised!(
+        Supervisor.child_spec({Phoenix.PubSub, name: :edict_revoke_pubsub},
+          id: :edict_revoke_pubsub
+        )
+      )
+
+      insert_role!("user-1", "admin", "project", "7")
+
+      racing_config = %{
+        config
+        | repo: Edict.Test.RevokeDuringLoadRepo,
+          pubsub: :edict_revoke_pubsub
+      }
+
+      # A transport pid makes the socket connected, so the hook subscribes
+      socket = %{build_socket(%{current_user: %{id: "user-1"}}) | transport_pid: self()}
+      opts = %{edict_config: racing_config, action: :read, entity_type: :project, param: "id"}
+
+      {:cont, _socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+
+      assert_received {:edict_version_bump, "user-1", _version}
+    end
+
+    # On a remote node the per-user bump can reach the LiveView before
+    # PubSubListener has copied the new version into the cache.
+    test "halts on a bump that arrives before the cache version changes", %{config: config} do
+      insert_role!("user-1", "admin", "project", "7")
+      socket = build_socket(%{current_user: %{id: "user-1"}})
+      opts = %{edict_config: config, action: :read, entity_type: :project, param: "id"}
+      {:cont, mounted_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+
+      Edict.Test.Repo.delete_all(UserRole)
+      [hook] = mounted_socket.private.lifecycle.handle_info
+
+      {:halt, result_socket} =
+        hook.function.({:edict_version_bump, "user-1", make_ref()}, mounted_socket)
+
+      assert result_socket.redirected
+    end
+
+    test "assigns roles from the DB on a bump that arrives before the cache version changes", %{
+      config: config
+    } do
+      insert_role!("user-1", "admin", "project", "7")
+      socket = build_socket(%{current_user: %{id: "user-1"}})
+      opts = %{edict_config: config, action: :read, entity_type: :project, param: "id"}
+      {:cont, mounted_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+
+      insert_role!("user-1", "editor", "project", "7")
+      [hook] = mounted_socket.private.lifecycle.handle_info
+
+      {:halt, updated_socket} =
+        hook.function.({:edict_version_bump, "user-1", make_ref()}, mounted_socket)
+
+      assert :editor in Document.roles_for(
+               updated_socket.assigns.current_user_roles,
+               :project,
+               "7"
+             )
+    end
+
+    test "raises when on_unauthorized only patches after revocation", %{
+      config: config,
+      cache: cache
+    } do
+      insert_role!("user-1", "viewer", "project", "7")
+      patching_config = Map.put(config, :config_module, Edict.Test.PatchingConfig)
+      socket = build_socket(%{current_user: %{id: "user-1"}})
+      opts = %{edict_config: patching_config, action: :read, entity_type: :project, param: "id"}
+      {:cont, mounted_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+
+      Edict.Test.Repo.delete_all(UserRole)
+      {:ok, version} = Store.bump_version(cache, "user-1")
+      [hook] = mounted_socket.private.lifecycle.handle_info
+
+      assert_raise RuntimeError, ~r/redirect/, fn ->
+        hook.function.({:edict_version_bump, "user-1", version}, mounted_socket)
+      end
+    end
+
+    test "halts with a redirect when the mounted permission is revoked", %{
+      config: config,
+      cache: cache
+    } do
+      insert_role!("user-1", "admin", "project", "7")
+      socket = build_socket(%{current_user: %{id: "user-1"}})
+      opts = %{edict_config: config, action: :read, entity_type: :project, param: "id"}
+      {:cont, mounted_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+
+      Edict.Test.Repo.delete_all(UserRole)
+      {:ok, version} = Store.bump_version(cache, "user-1")
+      [hook] = mounted_socket.private.lifecycle.handle_info
+
+      {:halt, result_socket} =
+        hook.function.({:edict_version_bump, "user-1", version}, mounted_socket)
+
+      assert result_socket.redirected
+    end
+
+    test "raises when on_unauthorized does not redirect after revocation", %{
+      config: config,
+      cache: cache
+    } do
+      insert_role!("user-1", "viewer", "project", "7")
+      non_redirecting_config = Map.put(config, :config_module, Edict.Test.NonHaltingConfig)
+      socket = build_socket(%{current_user: %{id: "user-1"}})
+
+      opts = %{
+        edict_config: non_redirecting_config,
+        action: :read,
+        entity_type: :project,
+        param: "id"
+      }
+
+      {:cont, mounted_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+
+      Edict.Test.Repo.delete_all(UserRole)
+      {:ok, version} = Store.bump_version(cache, "user-1")
+      [hook] = mounted_socket.private.lifecycle.handle_info
+
+      assert_raise RuntimeError, ~r/redirect/, fn ->
+        hook.function.({:edict_version_bump, "user-1", version}, mounted_socket)
+      end
+    end
+  end
+
+  describe "load_document when the cache is not running" do
+    @describetag :capture_log
+
+    test "returns the roles from the DB", %{config: config} do
+      insert_role!("user-1", "admin", "project", "7")
+      down_config = Map.put(config, :cache, :edict_cache_not_started)
+
+      doc = Helpers.load_document(down_config, "user-1")
+
+      assert [:admin] = Document.roles_for(doc, :project, "7")
+    end
+
+    test "emits a cache unavailable telemetry event", %{config: config} do
+      down_config = Map.put(config, :cache, :edict_cache_not_started)
+      ref = :telemetry_test.attach_event_handlers(self(), [[:edict, :cache, :unavailable]])
+
+      Helpers.load_document(down_config, "user-1")
+
+      assert_received {[:edict, :cache, :unavailable], ^ref, %{count: 1},
+                       %{user_id: "user-1", reason: :no_cache}}
+    end
+
+    test "logs an error", %{config: config} do
+      down_config = Map.put(config, :cache, :edict_cache_not_started)
+
+      log = capture_log(fn -> Helpers.load_document(down_config, "user-1") end)
+
+      assert log =~ "Edict cache unavailable"
+    end
+  end
+
+  describe "strong actions in Plug and LiveView" do
+    setup %{config: config} do
+      insert_role!("alice", "treasurer", "account", "7")
+      strong_config = Map.put(config, :config_module, Edict.Test.StrongConfig)
+      # Document.new/3 only keeps roles whose atoms exist, and they exist once
+      # the config module is loaded; nothing else loads it before priming
+      Code.ensure_loaded!(Edict.Test.StrongConfig)
+      # Prime the cache, then revoke without notifying it: a stale cache
+      Helpers.load_document(strong_config, "alice")
+      Edict.Test.Repo.delete_all(UserRole)
+
+      %{strong_config: strong_config}
+    end
+
+    test "Plug denies a strong action revoked in the DB", %{strong_config: strong_config} do
+      opts =
+        EdictPlug.init(
+          edict_config: strong_config,
+          action: :approve_transfer,
+          entity_type: :account,
+          param: "id"
+        )
+
+      conn =
+        Plug.Test.conn(:post, "/accounts/7/approve", %{})
+        |> Map.put(:params, %{"id" => "7"})
+        |> Plug.Conn.assign(:current_user, %{id: "alice"})
+
+      result = EdictPlug.call(conn, opts)
+
+      assert result.halted
+      assert result.status == 403
+    end
+
+    test "LiveView mount halts on a strong action revoked in the DB", %{
+      strong_config: strong_config
+    } do
+      socket = build_socket(%{current_user: %{id: "alice"}})
+
+      opts = %{
+        edict_config: strong_config,
+        action: :approve_transfer,
+        entity_type: :account,
+        param: "id"
+      }
+
+      {:halt, result_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
+
+      assert result_socket.redirected
+    end
+
+    test "authorize event denies a strong action revoked in the DB", %{
+      strong_config: strong_config
+    } do
+      # Still grants treasurer: the setup revoked without notifying the cache
+      stale_doc = Helpers.load_document(strong_config, "alice")
+
+      socket =
+        build_socket(%{
+          account_id: "7",
+          current_user_roles: stale_doc,
+          edict_config: strong_config
+        })
+
+      {:cont, mounted} =
+        Authorize.on_mount(StrongEventLiveView, %{}, %{}, socket)
+
+      [hook] = mounted.private.lifecycle.handle_event
+
+      {:halt, result} = hook.function.("approve", %{}, mounted)
+
+      assert result.redirected
     end
   end
 
@@ -194,10 +446,12 @@ defmodule Edict.IntegrationTest do
       insert_role!("user-1", "editor", "project", "7")
 
       # Broadcast version bump (as if from another node)
+      new_version = make_ref()
+
       Phoenix.PubSub.broadcast(
         pubsub,
         "edict:versions",
-        {:edict_version_bump, "user-1", 2}
+        {:edict_version_bump, "user-1", new_version}
       )
 
       # Wait for PubSubListener to process
@@ -205,9 +459,9 @@ defmodule Edict.IntegrationTest do
 
       # Verify local version was bumped
       {:ok, local_version} = Store.get_version(cache, "user-1")
-      assert local_version == 2
+      assert local_version == new_version
 
-      # Next load_document detects mismatch (doc.version=1, current=2) and rebuilds
+      # Next load_document finds no cached document and rebuilds
       new_doc = Helpers.load_document(config, "user-1")
       roles = Document.roles_for(new_doc, :project, "7")
       assert :admin in roles

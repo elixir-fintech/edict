@@ -60,4 +60,65 @@ defmodule Edict.Cache.StoreTest do
       assert {:ok, 0} = Store.get_version(cache, "user-1")
     end
   end
+
+  describe "when the cache is not running" do
+    test "get_document returns the cache error" do
+      assert {:error, :no_cache} = Store.get_document(:edict_cache_not_started, "user-1")
+    end
+
+    test "get_version returns the cache error" do
+      assert {:error, :no_cache} = Store.get_version(:edict_cache_not_started, "user-1")
+    end
+  end
+
+  describe "expiration" do
+    test "put_document sets an expiration on the document", %{cache: cache} do
+      doc = %Document{user_id: "user-1", version: 1, roles: %{}}
+
+      :ok = Store.put_document(cache, "user-1", doc)
+
+      assert {:ok, ttl} = Cachex.ttl(cache, {:auth_doc, "user-1"})
+      assert ttl in 1..:timer.minutes(10)
+    end
+
+    test "set_version sets an expiration on the version", %{cache: cache} do
+      :ok = Store.set_version(cache, "user-1", make_ref())
+
+      assert {:ok, ttl} = Cachex.ttl(cache, {:auth_version, "user-1"})
+      assert ttl in 1..:timer.minutes(10)
+    end
+
+    test "honours the configured ttl", %{cache: cache} do
+      Application.put_env(:edict, :ttl, :timer.seconds(5))
+      on_exit(fn -> Application.delete_env(:edict, :ttl) end)
+      doc = %Document{user_id: "user-1", version: 1, roles: %{}}
+
+      :ok = Store.put_document(cache, "user-1", doc)
+
+      assert {:ok, ttl} = Cachex.ttl(cache, {:auth_doc, "user-1"})
+      assert ttl in 1..:timer.seconds(5)
+    end
+  end
+
+  describe "invalidate/3" do
+    test "sets the version and drops the cached document", %{cache: cache} do
+      doc = %Edict.Cache.Document{user_id: "user-1", version: 0, roles: %{}}
+      :ok = Store.put_document(cache, "user-1", doc)
+      version = make_ref()
+
+      :ok = Store.invalidate(cache, "user-1", version)
+
+      assert {:ok, ^version} = Store.get_version(cache, "user-1")
+      assert :miss = Store.get_document(cache, "user-1")
+    end
+  end
+
+  test "bump_version drops the cached document", %{cache: cache} do
+    doc = %Edict.Cache.Document{user_id: "user-1", version: 0, roles: %{}}
+    :ok = Store.put_document(cache, "user-1", doc)
+
+    {:ok, _version} = Store.bump_version(cache, "user-1")
+
+    assert :miss = Store.get_document(cache, "user-1")
+  end
 end

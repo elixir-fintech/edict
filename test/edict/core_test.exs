@@ -157,6 +157,18 @@ defmodule Edict.CoreTest do
     end
   end
 
+  describe "list_entity_roles/4" do
+    test "returns only the user's roles on that entity", %{config: config} do
+      {:ok, _} = Core.assign_role(config, "user-1", "admin", "project", "7")
+      {:ok, _} = Core.assign_role(config, "user-1", "viewer", "project", "8")
+      {:ok, _} = Core.assign_role(config, "user-2", "admin", "project", "7")
+
+      roles = Core.list_entity_roles(config, "user-1", "project", "7")
+
+      assert [%UserRole{user_id: "user-1", entity_id: "7", role: "admin"}] = roles
+    end
+  end
+
   describe "assign_roles/4" do
     test "assigns a role to multiple entities", %{config: config} do
       entities = [{"organization", "42"}, {"team", "10"}, {"project", "7"}]
@@ -177,6 +189,64 @@ defmodule Edict.CoreTest do
       db_roles = Edict.Test.Repo.all(UserRole)
       assert length(db_roles) == 2
     end
+
+    test "does not invalidate when every role is already assigned", %{
+      config: config,
+      pubsub: pubsub
+    } do
+      entities = [{"organization", "42"}, {"team", "10"}]
+      {:ok, _} = Core.assign_roles(config, "user-1", "admin", entities)
+      Phoenix.PubSub.subscribe(pubsub, "edict:user:user-1")
+
+      {:ok, _} = Core.assign_roles(config, "user-1", "admin", entities)
+
+      refute_received {:edict_version_bump, "user-1", _version}
+    end
+
+    test "does not invalidate for an empty entity list", %{config: config, pubsub: pubsub} do
+      Phoenix.PubSub.subscribe(pubsub, "edict:user:user-1")
+
+      {:ok, []} = Core.assign_roles(config, "user-1", "admin", [])
+
+      refute_received {:edict_version_bump, "user-1", _version}
+    end
+
+    test "rejects a blank entity ID", %{config: config} do
+      entities = [{"organization", "42"}, {"project", ""}]
+
+      assert {:error, %Ecto.Changeset{}} = Core.assign_roles(config, "user-1", "admin", entities)
+    end
+
+    test "inserts nothing when any entity ID is blank", %{config: config} do
+      entities = [{"organization", "42"}, {"project", ""}]
+
+      Core.assign_roles(config, "user-1", "admin", entities)
+
+      assert Edict.Test.Repo.all(UserRole) == []
+    end
+
+    test "rejects a blank user ID", %{config: config} do
+      entities = [{"organization", "42"}]
+
+      assert {:error, %Ecto.Changeset{}} = Core.assign_roles(config, "", "admin", entities)
+    end
+  end
+
+  describe "edict_user_roles table" do
+    test "rejects a blank entity ID written directly" do
+      entry = %{
+        id: Ecto.UUID.generate(),
+        user_id: "user-1",
+        entity_type: "project",
+        entity_id: "",
+        role: "admin",
+        inserted_at: DateTime.utc_now()
+      }
+
+      assert_raise Postgrex.Error, ~r/edict_user_roles_entity_id_not_blank/, fn ->
+        Edict.Test.Repo.insert_all(UserRole, [entry])
+      end
+    end
   end
 
   describe "revoke_entity/3 PubSub" do
@@ -191,6 +261,17 @@ defmodule Edict.CoreTest do
 
       assert_receive {:edict_version_bump, "user-1", _}, 1000
       assert_receive {:edict_version_bump, "user-2", _}, 1000
+    end
+
+    test "invalidates a user assigned just before the delete", %{config: config, pubsub: pubsub} do
+      {:ok, _} = Core.assign_role(config, "user-1", "admin", "organization", "42")
+      racing_config = Map.put(config, :repo, Edict.Test.AssignBeforeDeleteRepo)
+
+      Phoenix.PubSub.subscribe(pubsub, "edict:user:user-3")
+
+      Core.revoke_entity(racing_config, "organization", "42")
+
+      assert_receive {:edict_version_bump, "user-3", _}, 1000
     end
   end
 end
