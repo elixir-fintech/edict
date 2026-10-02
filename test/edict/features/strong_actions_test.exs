@@ -1,5 +1,5 @@
 defmodule Edict.Features.StrongActionsTest do
-  use Cabbage.Feature, async: false, file: "strong_actions.feature"
+  use Chabis.Feature, async: false, file: "strong_actions.feature"
 
   import Ecto.Query
 
