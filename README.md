@@ -440,6 +440,20 @@ Edict.TestHelpers.assert_can("user-1", :delete, org_struct)
 Edict.TestHelpers.refute_can("user-1", :billing, project_struct)
 ```
 
+Acceptance criteria live as Gherkin features in `test/features/`, executed by
+the [`cucumber`](https://hex.pm/packages/cucumber) hex package (test-only
+dependency). Step definitions go in `test/features/step_definitions/`, and
+scenario setup — SQL sandbox checkout and a per-scenario cache — in
+`test/features/support/sandbox.exs`. Run them with the rest of the suite
+(`mix test`) or alone:
+
+```bash
+mix test --only cucumber
+```
+
+Note that cucumber requires Elixir 1.18+ to run the test suite; the library
+itself still supports `~> 1.15`.
+
 ## License
 
 MIT
