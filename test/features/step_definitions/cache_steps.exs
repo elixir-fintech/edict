@@ -9,6 +9,7 @@ defmodule Edict.Features.StepDefinitions.CacheSteps do
 
   alias Edict.Cache.Store
   alias Edict.Enforcement.Helpers
+  alias Edict.Test.Checks
   alias Edict.Schema.UserRole
 
   step ~r/^(\w+)'s project document is cached$/, %{args: [user]} = context do
@@ -52,18 +53,18 @@ defmodule Edict.Features.StepDefinitions.CacheSteps do
   end
 
   step "{word} can {string} on project {string}", %{args: [user, action, id]} = context do
-    assert authorized?(context, user, action, id)
+    assert Checks.authorized?(context, user, action, id)
     context
   end
 
   step "{word} cannot {string} on project {string}", %{args: [user, action, id]} = context do
-    refute authorized?(context, user, action, id)
+    refute Checks.authorized?(context, user, action, id)
     context
   end
 
   step ~r/^(\w+) can still "([^"]+)" on project "([^"]+)" from the stale cache$/,
        %{args: [user, action, id]} = context do
-    assert authorized?(context, user, action, id)
+    assert Checks.authorized?(context, user, action, id)
     context
   end
 
@@ -83,7 +84,8 @@ defmodule Edict.Features.StepDefinitions.CacheSteps do
       ExUnit.CaptureLog.capture_log(fn ->
         send(
           self(),
-          {:down_check, authorized?(%{context | project_config: down_config}, user, action, id)}
+          {:down_check,
+           Checks.authorized?(%{context | project_config: down_config}, user, action, id)}
         )
       end)
 
@@ -99,17 +101,6 @@ defmodule Edict.Features.StepDefinitions.CacheSteps do
   step "the check reads the database and allows it", context do
     assert context.down_result
     context
-  end
-
-  defp authorized?(context, user, action, id) do
-    Helpers.authorized?(
-      context.project_config,
-      Helpers.load_document(context.project_config, user),
-      String.to_existing_atom(action),
-      :project,
-      id,
-      []
-    )
   end
 
   defp version(context, user) do

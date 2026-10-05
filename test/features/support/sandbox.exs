@@ -8,6 +8,10 @@ defmodule Edict.Features.Support.Sandbox do
 
   - `:config` — the strong-actions config (account entity)
   - `:project_config` — the general config (project entity and friends)
+
+  The `:edict` app env is pointed at the scenario's processes and deleted
+  again afterwards, so sync unit tests that expect a clean (or absent)
+  environment — `Edict.SupervisorTest`, for one — are unaffected.
   """
 
   use Cucumber.Hooks
@@ -44,5 +48,15 @@ defmodule Edict.Features.Support.Sandbox do
        },
        documents: %{}
      })}
+  end
+
+  after_scenario _context do
+    # Leftovers would break sync tests that expect these keys to be absent,
+    # such as "init requires a config module when none is configured".
+    Application.delete_env(:edict, :repo)
+    Application.delete_env(:edict, :config_module)
+    Application.delete_env(:edict, :cache)
+    Application.delete_env(:edict, :pubsub)
+    :ok
   end
 end

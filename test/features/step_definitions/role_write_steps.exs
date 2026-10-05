@@ -11,6 +11,7 @@ defmodule Edict.Features.StepDefinitions.RoleWriteSteps do
 
   step "{string} is assigned the unknown role {string} on project {string}",
        %{args: [user, role, id]} = context do
+    # The unknown names must not exist as atoms, so String.to_atom/1 is deliberate.
     Map.put(context, :write, Edict.assign_role(user, String.to_atom(role), :project, id))
   end
 

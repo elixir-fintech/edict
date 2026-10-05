@@ -39,6 +39,7 @@ defmodule Edict.Features.StepDefinitions.LiveViewSteps do
        %{args: [user, id, action]} = context do
     outcome =
       try do
+        # The typo must not exist as an atom, so String.to_atom/1 is deliberate.
         mount(%{context | lv_action: String.to_atom(action)}, user, %{context.lv_param => id})
       rescue
         e in ArgumentError -> {:raised, e}

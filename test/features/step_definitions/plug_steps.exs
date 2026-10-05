@@ -49,6 +49,7 @@ defmodule Edict.Features.StepDefinitions.PlugSteps do
        %{args: [user, id, action]} = context do
     outcome =
       try do
+        # The typo must not exist as an atom, so String.to_atom/1 is deliberate.
         run_plug(
           %{context | plug_opts: %{context.plug_opts | action: String.to_atom(action)}},
           user_id(user),

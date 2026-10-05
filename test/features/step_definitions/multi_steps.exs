@@ -8,7 +8,7 @@ defmodule Edict.Features.StepDefinitions.MultiSteps do
   import ExUnit.Assertions
 
   alias Edict.Cache.Store
-  alias Edict.Enforcement.Helpers
+  alias Edict.Test.Checks
   alias Edict.Schema.UserRole
   alias Edict.Test.Project
 
@@ -102,13 +102,13 @@ defmodule Edict.Features.StepDefinitions.MultiSteps do
 
   step "the transaction commits and {word} can {string} on project {string}",
        %{args: [user, action, id]} = context do
-    assert authorized?(context, user, action, id)
+    assert Checks.authorized?(context, user, action, id)
     context
   end
 
   step "the transaction commits and {word} cannot {string} on project {string}",
        %{args: [user, action, id]} = context do
-    refute authorized?(context, user, action, id)
+    refute Checks.authorized?(context, user, action, id)
     context
   end
 
@@ -136,16 +136,5 @@ defmodule Edict.Features.StepDefinitions.MultiSteps do
   step "it raises ArgumentError", context do
     assert match?({:raised, %ArgumentError{}}, context.outcome)
     context
-  end
-
-  defp authorized?(context, user, action, id) do
-    Helpers.authorized?(
-      context.project_config,
-      Helpers.load_document(context.project_config, user),
-      String.to_existing_atom(action),
-      :project,
-      id,
-      []
-    )
   end
 end

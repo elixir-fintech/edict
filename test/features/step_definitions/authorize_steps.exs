@@ -30,7 +30,14 @@ defmodule Edict.Features.StepDefinitions.AuthorizeSteps do
 
   step "a LiveView guarding {string} with {string} and {string} with {string} on project from assign {string}",
        %{args: [_e1, _a1, _e2, _a2, _key]} = context do
-    # The guarded LiveView is compiled with exactly these declarations.
+    # The steps below only guard the right operations if the LiveView is
+    # compiled with exactly these declarations — so the Background checks it.
+    assert GuardedProjectLive.__edict_authorizations__() == %{
+             "delete" => {:delete, :project_id, :project},
+             "update" => {:write, :project_id, :project},
+             "typo" => {:aprove, :project_id, :project}
+           }
+
     context
   end
 
