@@ -7,3 +7,4 @@ Ecto.Migrator.up(Edict.Test.Repo, 1, Edict.Test.NotBlankConstraintsMigration, lo
 Ecto.Adapters.SQL.Sandbox.mode(Edict.Test.Repo, :manual)
 
 ExUnit.start()
+Cucumber.compile_features!()

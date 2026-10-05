@@ -10,6 +10,8 @@ defmodule Edict.MixProject do
       version: @version,
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
+      # Loaded by Cucumber.compile_features!/0, not by mix test
+      test_ignore_filters: [~r/features\/step_definitions/, ~r/features\/support/],
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
@@ -38,7 +40,7 @@ defmodule Edict.MixProject do
 
       # Dev/test
       {:postgrex, ">= 0.0.0", only: :test},
-      {:chabis, github: "elixir-fintech/chabis",  only: :test},
+      {:cucumber, "~> 1.0", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]

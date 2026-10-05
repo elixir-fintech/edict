@@ -2,7 +2,7 @@ Feature: Strong actions
   Strong actions are checked against the database on every check,
   so a revoked role never grants them, even from a stale cache.
 
-  # Cabbage does not run Background steps, so each scenario states its setup.
+  # Each scenario states its full setup: they differ in granted roles.
 
   Scenario: A revoked role no longer grants a strong action
     Given "approve_transfer" is a strong action
