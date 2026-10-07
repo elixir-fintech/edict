@@ -18,6 +18,6 @@ defmodule Edict.Test.PatchingConfig do
   end
 
   role :viewer do
-    on(:project, actions: [:read])
+    on(:project, permissions: [:read])
   end
 end

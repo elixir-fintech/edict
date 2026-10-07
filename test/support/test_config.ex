@@ -22,27 +22,27 @@ defmodule Edict.Test.Config do
   end
 
   role :admin do
-    on(:organization, actions: [:read, :write, :delete, :manage, :billing])
-    on(:team, actions: [:read, :write, :delete, :manage])
-    on(:project, actions: [:read, :write, :delete, :manage])
-    on(:resource, actions: [:read, :write, :delete])
+    on(:organization, permissions: [:read, :write, :delete, :manage, :billing])
+    on(:team, permissions: [:read, :write, :delete, :manage])
+    on(:project, permissions: [:read, :write, :delete, :manage])
+    on(:resource, permissions: [:read, :write, :delete])
   end
 
   role :editor do
-    on(:organization, actions: [:read, :write])
-    on(:team, actions: [:read, :write])
-    on(:project, actions: [:read, :write])
-    on(:resource, actions: [:read, :write])
+    on(:organization, permissions: [:read, :write])
+    on(:team, permissions: [:read, :write])
+    on(:project, permissions: [:read, :write])
+    on(:resource, permissions: [:read, :write])
   end
 
   role :viewer do
-    on(:organization, actions: [:read])
-    on(:team, actions: [:read])
-    on(:project, actions: [:read])
-    on(:resource, actions: [:read])
+    on(:organization, permissions: [:read])
+    on(:team, permissions: [:read])
+    on(:project, permissions: [:read])
+    on(:resource, permissions: [:read])
   end
 
   role :billing_manager do
-    on(:organization, actions: [:read, :billing])
+    on(:organization, permissions: [:read, :billing])
   end
 end

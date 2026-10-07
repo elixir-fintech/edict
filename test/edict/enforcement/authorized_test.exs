@@ -125,7 +125,7 @@ defmodule Edict.Enforcement.AuthorizedTest do
     end
   end
 
-  test "a nil document with a valid ID raises a descriptive error for a regular action", %{
+  test "a nil document with a valid ID raises a descriptive error for a non-strong permission", %{
     config: config
   } do
     assert_raise ArgumentError, ~r/current_user_roles/, fn ->

@@ -1,5 +1,5 @@
 Feature: Plug enforcement
-  Requests pass only when the user holds the action on the entity named by
+  Requests pass only when the user holds the permission on the entity named by
   the request param. Anything ambiguous or unknown fails closed.
 
   Background:
@@ -30,7 +30,7 @@ Feature: Plug enforcement
     When a request without a user asks for project "7"
     Then the request is halted with status 403
 
-  Scenario: An action the entity type does not define raises
+  Scenario: A permission the entity type does not define raises
     Given user "alice" has the role "admin" on project "7"
-    When alice requests the project "7" page for action "aprove"
+    When alice requests the project "7" page for permission "aprove"
     Then the request raises ArgumentError

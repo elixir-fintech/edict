@@ -52,19 +52,19 @@ defmodule Edict.Features.StepDefinitions.CacheSteps do
     context
   end
 
-  step "{word} can {string} on project {string}", %{args: [user, action, id]} = context do
-    assert Checks.authorized?(context, user, action, id)
+  step "{word} can {string} on project {string}", %{args: [user, permission, id]} = context do
+    assert Checks.authorized?(context, user, permission, id)
     context
   end
 
-  step "{word} cannot {string} on project {string}", %{args: [user, action, id]} = context do
-    refute Checks.authorized?(context, user, action, id)
+  step "{word} cannot {string} on project {string}", %{args: [user, permission, id]} = context do
+    refute Checks.authorized?(context, user, permission, id)
     context
   end
 
   step ~r/^(\w+) can still "([^"]+)" on project "([^"]+)" from the stale cache$/,
-       %{args: [user, action, id]} = context do
-    assert Checks.authorized?(context, user, action, id)
+       %{args: [user, permission, id]} = context do
+    assert Checks.authorized?(context, user, permission, id)
     context
   end
 
@@ -74,7 +74,7 @@ defmodule Edict.Features.StepDefinitions.CacheSteps do
   end
 
   step "the cache is down and {word} checks {string} on project {string}",
-       %{args: [user, action, id]} = context do
+       %{args: [user, permission, id]} = context do
     down_config = %{
       context.project_config
       | cache: :"down_cache_#{System.unique_integer([:positive])}"
@@ -85,7 +85,7 @@ defmodule Edict.Features.StepDefinitions.CacheSteps do
         send(
           self(),
           {:down_check,
-           Checks.authorized?(%{context | project_config: down_config}, user, action, id)}
+           Checks.authorized?(%{context | project_config: down_config}, user, permission, id)}
         )
       end)
 

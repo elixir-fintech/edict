@@ -18,6 +18,6 @@ defmodule Edict.Test.NonHaltingConfig do
   end
 
   role :viewer do
-    on(:project, actions: [:read])
+    on(:project, permissions: [:read])
   end
 end

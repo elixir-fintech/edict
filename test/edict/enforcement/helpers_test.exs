@@ -20,12 +20,12 @@ defmodule Edict.Enforcement.HelpersTest do
   end
 
   describe "can?/5 (with entity_type and entity_id)" do
-    test "returns true when user has a role granting the action", %{doc: doc} do
+    test "returns true when user has a role granting the permission", %{doc: doc} do
       assert Helpers.can?(doc, :read, :organization, "42", @config_module)
       assert Helpers.can?(doc, :billing, :organization, "42", @config_module)
     end
 
-    test "returns false when user lacks the action", %{doc: doc} do
+    test "returns false when user lacks the permission", %{doc: doc} do
       refute Helpers.can?(doc, :billing, :project, "7", @config_module)
     end
 
@@ -33,7 +33,7 @@ defmodule Edict.Enforcement.HelpersTest do
       refute Helpers.can?(doc, :read, :team, "99", @config_module)
     end
 
-    test "unions actions across multiple roles", %{doc: doc} do
+    test "unions permissions across multiple roles", %{doc: doc} do
       assert Helpers.can?(doc, :manage, :organization, "42", @config_module)
       assert Helpers.can?(doc, :billing, :organization, "42", @config_module)
     end

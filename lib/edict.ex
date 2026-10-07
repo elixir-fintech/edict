@@ -48,7 +48,7 @@ defmodule Edict do
 
   ## Key modules
 
-  - `Edict.Config` — DSL for defining entity types, roles, and actions
+  - `Edict.Config` — DSL for defining entity types, roles, and permissions
   - `Edict.Plug` — controller-level authorization
   - `Edict.LiveView` — LiveView on_mount authorization
   - `Edict.Enforcement.Authorize` — per-event authorization (`handle_event` hook)
@@ -200,8 +200,8 @@ defmodule Edict do
   check the document instead, for example to show or hide a button.
   """
   @spec can?(Document.t(), atom(), struct()) :: boolean()
-  def can?(document, action, entity) when is_struct(entity),
-    do: can?(document, action, entity, [])
+  def can?(document, permission, entity) when is_struct(entity),
+    do: can?(document, permission, entity, [])
 
   @doc """
   Check permission with an entity struct and options, or with a raw entity
@@ -213,24 +213,24 @@ defmodule Edict do
   """
   @spec can?(Document.t(), atom(), struct(), keyword()) :: boolean()
   @spec can?(Document.t(), atom(), atom(), term()) :: boolean()
-  def can?(document, action, entity, opts) when is_struct(entity) and is_list(opts) do
+  def can?(document, permission, entity, opts) when is_struct(entity) and is_list(opts) do
     entity_type = Edict.Entity.entity_type(entity)
     entity_id = Edict.Entity.entity_id(entity)
-    can?(document, action, entity_type, entity_id, opts)
+    can?(document, permission, entity_type, entity_id, opts)
   end
 
   # A keyword list here is options passed in place of the entity ID. A request
   # param is never a list with atom keys, so an array param still reaches the
   # clause below and is denied.
-  def can?(_document, _action, entity_type, [{key, _value} | _])
+  def can?(_document, _permission, entity_type, [{key, _value} | _])
       when is_atom(entity_type) and is_atom(key) do
     raise ArgumentError,
           "Edict.can?/4 got options where the entity ID belongs; " <>
             "pass the entity ID, then options"
   end
 
-  def can?(document, action, entity_type, entity_id) when is_atom(entity_type),
-    do: can?(document, action, entity_type, entity_id, [])
+  def can?(document, permission, entity_type, entity_id) when is_atom(entity_type),
+    do: can?(document, permission, entity_type, entity_id, [])
 
   @doc """
   Check permission using entity_type and entity_id directly, with options.
@@ -239,12 +239,12 @@ defmodule Edict do
   document instead of the database; other options are ignored, and any other
   `:strong` value raises
   `ArgumentError`. Unlike `Edict.Plug`, `Edict.LiveView` and `authorize`,
-  `can?` does not validate the action: an action the entity type does not
-  define simply returns `false`.
+  `can?` does not validate the permission: a permission the entity type does
+  not define simply returns `false`.
   """
   @spec can?(Document.t(), atom(), atom(), term(), keyword()) :: boolean()
-  def can?(document, action, entity_type, entity_id, opts) do
-    Helpers.authorized?(config(), document, action, entity_type, entity_id, opts)
+  def can?(document, permission, entity_type, entity_id, opts) do
+    Helpers.authorized?(config(), document, permission, entity_type, entity_id, opts)
   end
 
   # --- Document Loading ---
@@ -276,8 +276,8 @@ defmodule Edict do
       {:entity_types, 0},
       {:valid_entity_type?, 1},
       {:valid_role?, 1},
-      {:valid_action?, 2},
-      {:actions_for, 2},
+      {:valid_permission?, 2},
+      {:permissions_for, 2},
       {:strong_action?, 1},
       {:user_id_from_assigns, 1},
       {:on_unauthorized, 0}

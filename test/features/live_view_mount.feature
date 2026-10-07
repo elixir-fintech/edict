@@ -37,7 +37,7 @@ Feature: LiveView mount authorization
     When an unrelated role change bumps alice's version
     Then the LiveView stays open and the bump never reaches handle_info
 
-  Scenario: An action the entity type does not define raises on mount
+  Scenario: A permission the entity type does not define raises on mount
     Given user "alice" has the role "admin" on project "7"
-    When alice mounts the LiveView for project "7" with action "aprove"
+    When alice mounts the LiveView for project "7" with permission "aprove"
     Then the mount raises ArgumentError

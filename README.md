@@ -11,9 +11,9 @@ invalidated when roles change, with cross-node support via Phoenix.PubSub.
 
 - **Roles** are explicitly assigned per user per entity (no implicit inheritance)
 - **Entities** are typed resources (organization, team, project) identified by a string ID
-- **Actions** are scoped per entity type per role — `admin` on an organization may differ from `admin` on a project
-- **A user can hold multiple roles** on the same entity — actions are the union of all roles
-- **The cache stores roles**, not resolved actions — action resolution happens at check time, so config changes don't require cache invalidation
+- **Permissions** are granted per entity type per role — `admin` on an organization may grant different permissions from `admin` on a project
+- **A user can hold multiple roles** on the same entity — permissions are the union of all roles
+- **The cache stores roles**, not resolved permissions — permission resolution happens at check time, so config changes don't require cache invalidation
 
 ## Installation
 
@@ -110,24 +110,24 @@ defmodule MyApp.AuthConfig do
   end
 
   role :admin do
-    on :organization, actions: [:read, :write, :delete, :manage, :billing]
-    on :team, actions: [:read, :write, :delete, :manage]
-    on :project, actions: [:read, :write, :delete, :manage]
-    on :resource, actions: [:read, :write, :delete]
+    on :organization, permissions: [:read, :write, :delete, :manage, :billing]
+    on :team, permissions: [:read, :write, :delete, :manage]
+    on :project, permissions: [:read, :write, :delete, :manage]
+    on :resource, permissions: [:read, :write, :delete]
   end
 
   role :editor do
-    on :organization, actions: [:read, :write]
-    on :project, actions: [:read, :write]
+    on :organization, permissions: [:read, :write]
+    on :project, permissions: [:read, :write]
   end
 
   role :viewer do
-    on :organization, actions: [:read]
-    on :project, actions: [:read]
+    on :organization, permissions: [:read]
+    on :project, permissions: [:read]
   end
 
   role :billing_manager do
-    on :organization, actions: [:read, :billing]
+    on :organization, permissions: [:read, :billing]
   end
 end
 ```
@@ -195,7 +195,7 @@ transaction.
 # In router
 pipeline :require_project_read do
   plug Edict.Plug,
-    action: :read,
+    permission: :read,
     entity_type: :project,
     param: "project_id"
 end
@@ -210,7 +210,7 @@ On success, the authorization document is stored in `conn.assigns.current_user_r
 On denial, Edict calls `on_unauthorized` and then halts the connection itself. A missing
 param, an empty entity ID, or a non-scalar one such as an array param (`?project_id[]=7`) is
 always denied.
-An action the config does not define for the entity type (a typo such as `:aprove`) raises
+A permission the config does not define for the entity type (a typo such as `:aprove`) raises
 `ArgumentError` instead of silently denying every request.
 
 `param:` names the request param holding the entity ID. When the ID needs custom extraction,
@@ -229,7 +229,7 @@ defmodule MyAppWeb.ProjectLive.Show do
   use MyAppWeb, :live_view
 
   on_mount {Edict.LiveView,
-    action: :read,
+    permission: :read,
     entity_type: :project,
     param: "project_id"}
 
@@ -251,12 +251,12 @@ defmodule MyAppWeb.ProjectLive.Show do
   use Edict.Enforcement.Authorize
 
   on_mount {Edict.LiveView,
-    action: :read,
+    permission: :read,
     entity_type: :project,
     param: "project_id"}
 
-  authorize "delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project
-  authorize "update", action: :write, entity_from_assigns: :project_id, entity_type: :project
+  authorize "delete", permission: :delete, entity_from_assigns: :project_id, entity_type: :project
+  authorize "update", permission: :write, entity_from_assigns: :project_id, entity_type: :project
 
   def mount(%{"project_id" => project_id}, _session, socket) do
     # The guards read the entity ID from this assign
@@ -274,7 +274,7 @@ The guards need `on_mount {Edict.LiveView, ...}`, which assigns `current_user_ro
 `on_unauthorized` when the assigned entity ID is missing or empty. A missing entity assign on its
 own also means denial.
 
-`action:`, `entity_from_assigns:` and `entity_type:` are all required; leaving one out, declaring an event twice, or naming it with anything but a string fails compilation, and so does `use Edict.Enforcement.Authorize` before `use Phoenix.LiveView` or in a LiveComponent. A denied event whose `on_unauthorized` does not redirect is dropped. `use Edict.Enforcement.Authorize` must come after `use Phoenix.LiveView` (here via `use MyAppWeb, :live_view`): it attaches a `handle_event` hook that checks each declared event before your handler runs.
+`permission:`, `entity_from_assigns:` and `entity_type:` are all required; leaving one out, declaring an event twice, or naming it with anything but a string fails compilation, and so does `use Edict.Enforcement.Authorize` before `use Phoenix.LiveView` or in a LiveComponent. A denied event whose `on_unauthorized` does not redirect is dropped. `use Edict.Enforcement.Authorize` must come after `use Phoenix.LiveView` (here via `use MyAppWeb, :live_view`): it attaches a `handle_event` hook that checks each declared event before your handler runs.
 
 **Earlier hooks run first:** `handle_event` hooks attached before Edict's, for example by `live_session` `on_mount` callbacks, see declared events before they are authorized. Such hooks must never perform or authorize protected operations; keep protected work in `handle_event/3`, which always runs after every hook.
 
@@ -292,8 +292,8 @@ own also means denial.
 ```
 
 `can?/3` uses the `Edict.Entity` protocol to extract type and ID from the struct. `can?/4` takes
-them directly (`can?(doc, action, :project, "7")`), or a struct plus options; `can?/5` takes type,
-ID and options. Unlike the Plug and LiveView, `can?` does not validate the action: an action the
+them directly (`can?(doc, permission, :project, "7")`), or a struct plus options; `can?/5` takes type,
+ID and options. Unlike the Plug and LiveView, `can?` does not validate the permission: a permission the
 entity type does not define returns `false`.
 
 ## Strong actions
@@ -315,14 +315,14 @@ defmodule MyApp.AuthConfig do
   end
 
   role :treasurer do
-    on :account, actions: [:read, :approve_transfer]
+    on :account, permissions: [:read, :approve_transfer]
   end
 
   # ... the roles granting :delete
 end
 ```
 
-`strong_actions` takes a literal list of atoms, may appear once, and every listed action must be
+`strong_actions` takes a literal list of atoms, may appear once, and every listed permission must be
 granted by some role, otherwise the config fails to compile.
 
 This applies to `Edict.Plug`, `Edict.LiveView` (on mount), `authorize` event guards, and
@@ -350,7 +350,7 @@ strong action with `authorize`**, not only the mount.
 Pair it with a strong check on the event itself:
 
 ```elixir
-authorize "approve", action: :approve_transfer, entity_from_assigns: :account_id, entity_type: :account
+authorize "approve", permission: :approve_transfer, entity_from_assigns: :account_id, entity_type: :account
 ```
 
 `strong: false` is the only accepted value, and only `Edict.can?` accepts it. `Edict.Plug`,
