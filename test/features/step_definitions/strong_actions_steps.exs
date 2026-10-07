@@ -28,10 +28,8 @@ defmodule Edict.Features.StepDefinitions.StrongActionsSteps do
     context
   end
 
-  step "user {string} has no roles", %{args: [user]} = context do
-    assert all_roles(context, user) == []
-    context
-  end
+  # "user {string} has no roles" is shared by every feature; defined once in
+  # project_roles_steps.exs.
 
   # ...and regexes for possessives: {word} eats "alice's" whole and the
   # expression parser cannot backtrack to leave the 's literal behind.
@@ -81,10 +79,6 @@ defmodule Edict.Features.StepDefinitions.StrongActionsSteps do
       entity_type: "account",
       entity_id: id
     })
-  end
-
-  defp all_roles(context, user) do
-    context.repo.all(from ur in UserRole, where: ur.user_id == ^user)
   end
 
   defp authorized?(context, user, action, id, opts) do
