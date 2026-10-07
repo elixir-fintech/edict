@@ -101,14 +101,14 @@ defmodule Edict.Features.StepDefinitions.MultiSteps do
   end
 
   step "the transaction commits and {word} can {string} on project {string}",
-       %{args: [user, action, id]} = context do
-    assert Checks.authorized?(context, user, action, id)
+       %{args: [user, permission, id]} = context do
+    assert Checks.authorized?(context, user, permission, id)
     context
   end
 
   step "the transaction commits and {word} cannot {string} on project {string}",
-       %{args: [user, action, id]} = context do
-    refute Checks.authorized?(context, user, action, id)
+       %{args: [user, permission, id]} = context do
+    refute Checks.authorized?(context, user, permission, id)
     context
   end
 

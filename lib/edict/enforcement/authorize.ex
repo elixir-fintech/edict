@@ -9,15 +9,15 @@ defmodule Edict.Enforcement.Authorize do
         use Edict.Enforcement.Authorize
 
         # Assigns current_user_roles; the guards read it
-        on_mount {Edict.LiveView, action: :read, entity_type: :project, param: "project_id"}
+        on_mount {Edict.LiveView, permission: :read, entity_type: :project, param: "project_id"}
 
         def mount(%{"project_id" => project_id}, _session, socket) do
           # The guards read the entity ID from this assign
           {:ok, assign(socket, :project_id, project_id)}
         end
 
-        authorize "delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project
-        authorize "update", action: :write, entity_from_assigns: :project_id, entity_type: :project
+        authorize "delete", permission: :delete, entity_from_assigns: :project_id, entity_type: :project
+        authorize "update", permission: :write, entity_from_assigns: :project_id, entity_type: :project
 
         def handle_event("delete", _params, socket) do
           # Only reached if authorized
@@ -48,18 +48,18 @@ defmodule Edict.Enforcement.Authorize do
   > authorize protected operations: keep protected work in the LiveView's
   > `handle_event/3`, which always runs after every hook.
 
-  `:action`, `:entity_from_assigns` and `:entity_type` are required; a missing
+  `:permission`, `:entity_from_assigns` and `:entity_type` are required; a missing
   one fails compilation, and so does declaring an event twice or naming it
   with anything but a string. Strong actions
   (see `Edict.Config.strong_actions/1`) are always checked against the
   database; a `:strong` option fails compilation, since only `Edict.can?` may
-  opt out. An action the entity type does not define raises `ArgumentError`
+  opt out. A permission the entity type does not define raises `ArgumentError`
   when the event arrives.
   """
 
   alias Edict.Enforcement.Helpers
 
-  @required_options [:action, :entity_from_assigns, :entity_type]
+  @required_options [:permission, :entity_from_assigns, :entity_type]
 
   defmacro __using__(_opts) do
     quote do
@@ -79,16 +79,18 @@ defmodule Edict.Enforcement.Authorize do
     end
   end
 
-  @doc "Declares that `event_name` requires `action` on the entity in assigns."
+  @doc "Declares that `event_name` requires `permission` on the entity in assigns."
   defmacro authorize(event_name, opts) do
     Helpers.require_options!(opts, @required_options, "authorize")
     Helpers.reject_strong!(opts)
-    [action, assigns_key, entity_type] = Enum.map(@required_options, &Keyword.fetch!(opts, &1))
+
+    [permission, assigns_key, entity_type] =
+      Enum.map(@required_options, &Keyword.fetch!(opts, &1))
 
     quote do
       Module.put_attribute(__MODULE__, :edict_authorizations, {
         unquote(event_name),
-        {unquote(action), unquote(assigns_key), unquote(entity_type)}
+        {unquote(permission), unquote(assigns_key), unquote(entity_type)}
       })
     end
   end
@@ -141,15 +143,15 @@ defmodule Edict.Enforcement.Authorize do
 
   defp guard(:error, socket), do: {:cont, socket}
 
-  defp guard({:ok, {action, assigns_key, entity_type}}, socket) do
+  defp guard({:ok, {permission, assigns_key, entity_type}}, socket) do
     edict_config = socket.assigns[:edict_config] || Edict.config()
     config_module = edict_config.config_module
-    Helpers.validate_action!(config_module, action, entity_type)
+    Helpers.validate_permission!(config_module, permission, entity_type)
 
     if Helpers.authorized?(
          edict_config,
          socket.assigns[:current_user_roles],
-         action,
+         permission,
          entity_type,
          socket.assigns[assigns_key],
          []

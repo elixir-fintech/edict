@@ -6,7 +6,7 @@ defmodule Edict.IntegrationTest do
     use Edict.Enforcement.Authorize
 
     authorize("approve",
-      action: :approve_transfer,
+      permission: :approve_transfer,
       entity_from_assigns: :account_id,
       entity_type: :account
     )
@@ -76,7 +76,7 @@ defmodule Edict.IntegrationTest do
 
       opts = %{
         edict_config: config,
-        action: :read,
+        permission: :read,
         entity_type: :project,
         entity_from: fn params -> params["id"] end
       }
@@ -119,7 +119,7 @@ defmodule Edict.IntegrationTest do
 
       # A transport pid makes the socket connected, so the hook subscribes
       socket = %{build_socket(%{current_user: %{id: "user-1"}}) | transport_pid: self()}
-      opts = %{edict_config: racing_config, action: :read, entity_type: :project, param: "id"}
+      opts = %{edict_config: racing_config, permission: :read, entity_type: :project, param: "id"}
 
       {:cont, _socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
 
@@ -131,7 +131,7 @@ defmodule Edict.IntegrationTest do
     test "halts on a bump that arrives before the cache version changes", %{config: config} do
       insert_role!("user-1", "admin", "project", "7")
       socket = build_socket(%{current_user: %{id: "user-1"}})
-      opts = %{edict_config: config, action: :read, entity_type: :project, param: "id"}
+      opts = %{edict_config: config, permission: :read, entity_type: :project, param: "id"}
       {:cont, mounted_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
 
       Edict.Test.Repo.delete_all(UserRole)
@@ -148,7 +148,7 @@ defmodule Edict.IntegrationTest do
     } do
       insert_role!("user-1", "admin", "project", "7")
       socket = build_socket(%{current_user: %{id: "user-1"}})
-      opts = %{edict_config: config, action: :read, entity_type: :project, param: "id"}
+      opts = %{edict_config: config, permission: :read, entity_type: :project, param: "id"}
       {:cont, mounted_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
 
       insert_role!("user-1", "editor", "project", "7")
@@ -171,7 +171,14 @@ defmodule Edict.IntegrationTest do
       insert_role!("user-1", "viewer", "project", "7")
       patching_config = Map.put(config, :config_module, Edict.Test.PatchingConfig)
       socket = build_socket(%{current_user: %{id: "user-1"}})
-      opts = %{edict_config: patching_config, action: :read, entity_type: :project, param: "id"}
+
+      opts = %{
+        edict_config: patching_config,
+        permission: :read,
+        entity_type: :project,
+        param: "id"
+      }
+
       {:cont, mounted_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
 
       Edict.Test.Repo.delete_all(UserRole)
@@ -189,7 +196,7 @@ defmodule Edict.IntegrationTest do
     } do
       insert_role!("user-1", "admin", "project", "7")
       socket = build_socket(%{current_user: %{id: "user-1"}})
-      opts = %{edict_config: config, action: :read, entity_type: :project, param: "id"}
+      opts = %{edict_config: config, permission: :read, entity_type: :project, param: "id"}
       {:cont, mounted_socket} = EdictLiveView.on_mount(opts, %{"id" => "7"}, %{}, socket)
 
       Edict.Test.Repo.delete_all(UserRole)
@@ -212,7 +219,7 @@ defmodule Edict.IntegrationTest do
 
       opts = %{
         edict_config: non_redirecting_config,
-        action: :read,
+        permission: :read,
         entity_type: :project,
         param: "id"
       }
@@ -278,7 +285,7 @@ defmodule Edict.IntegrationTest do
       opts =
         EdictPlug.init(
           edict_config: strong_config,
-          action: :approve_transfer,
+          permission: :approve_transfer,
           entity_type: :account,
           param: "id"
         )
@@ -301,7 +308,7 @@ defmodule Edict.IntegrationTest do
 
       opts = %{
         edict_config: strong_config,
-        action: :approve_transfer,
+        permission: :approve_transfer,
         entity_type: :account,
         param: "id"
       }
@@ -348,7 +355,7 @@ defmodule Edict.IntegrationTest do
       opts =
         EdictPlug.init(
           edict_config: config,
-          action: :read,
+          permission: :read,
           entity_type: :project,
           entity_from: fn conn -> conn.params["id"] end
         )
@@ -371,7 +378,7 @@ defmodule Edict.IntegrationTest do
       opts =
         EdictPlug.init(
           edict_config: config,
-          action: :delete,
+          permission: :delete,
           entity_type: :project,
           entity_from: fn conn -> conn.params["id"] end
         )
@@ -391,7 +398,7 @@ defmodule Edict.IntegrationTest do
 
       opts = %{
         edict_config: config,
-        action: :read,
+        permission: :read,
         entity_type: :project,
         entity_from: fn params -> params["id"] end
       }
@@ -409,7 +416,7 @@ defmodule Edict.IntegrationTest do
 
       opts = %{
         edict_config: config,
-        action: :delete,
+        permission: :delete,
         entity_type: :project,
         entity_from: fn params -> params["id"] end
       }

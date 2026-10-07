@@ -34,26 +34,26 @@ defmodule Edict.ConfigTest do
     end
   end
 
-  describe "actions_for/2" do
-    test "returns actions for a role on an entity type" do
-      actions = Edict.Test.Config.actions_for(:admin, :organization)
-      assert :read in actions
-      assert :write in actions
-      assert :delete in actions
-      assert :manage in actions
-      assert :billing in actions
+  describe "permissions_for/2" do
+    test "returns permissions for a role on an entity type" do
+      permissions = Edict.Test.Config.permissions_for(:admin, :organization)
+      assert :read in permissions
+      assert :write in permissions
+      assert :delete in permissions
+      assert :manage in permissions
+      assert :billing in permissions
     end
 
     test "returns empty list for a role with no definition on an entity type" do
-      assert Edict.Test.Config.actions_for(:billing_manager, :project) == []
+      assert Edict.Test.Config.permissions_for(:billing_manager, :project) == []
     end
 
-    test "returns scoped actions per entity type" do
-      org_actions = Edict.Test.Config.actions_for(:admin, :organization)
-      project_actions = Edict.Test.Config.actions_for(:admin, :project)
+    test "returns scoped permissions per entity type" do
+      org_permissions = Edict.Test.Config.permissions_for(:admin, :organization)
+      project_permissions = Edict.Test.Config.permissions_for(:admin, :project)
 
-      assert :billing in org_actions
-      refute :billing in project_actions
+      assert :billing in org_permissions
+      refute :billing in project_permissions
     end
   end
 
@@ -70,20 +70,20 @@ defmodule Edict.ConfigTest do
     end
   end
 
-  describe "valid_action?/2" do
-    test "returns true for actions defined on an entity type" do
-      assert Edict.Test.Config.valid_action?(:read, :organization)
-      assert Edict.Test.Config.valid_action?(:billing, :organization)
-      assert Edict.Test.Config.valid_action?(:manage, :project)
+  describe "valid_permission?/2" do
+    test "returns true for permissions defined on an entity type" do
+      assert Edict.Test.Config.valid_permission?(:read, :organization)
+      assert Edict.Test.Config.valid_permission?(:billing, :organization)
+      assert Edict.Test.Config.valid_permission?(:manage, :project)
     end
 
-    test "returns false for actions not defined on an entity type" do
-      refute Edict.Test.Config.valid_action?(:billing, :project)
-      refute Edict.Test.Config.valid_action?(:manage, :resource)
+    test "returns false for permissions not defined on an entity type" do
+      refute Edict.Test.Config.valid_permission?(:billing, :project)
+      refute Edict.Test.Config.valid_permission?(:manage, :resource)
     end
 
-    test "returns false for completely unknown actions" do
-      refute Edict.Test.Config.valid_action?(:fly, :organization)
+    test "returns false for completely unknown permissions" do
+      refute Edict.Test.Config.valid_permission?(:fly, :organization)
     end
   end
 
@@ -114,7 +114,7 @@ defmodule Edict.ConfigTest do
   end
 
   describe "strong_actions/1" do
-    test "rejects an action no role grants" do
+    test "rejects a permission no role grants" do
       assert_raise CompileError, ~r/:approve_transfr/, fn ->
         compile_config("strong_actions([:approve_transfr])")
       end
@@ -146,7 +146,7 @@ defmodule Edict.ConfigTest do
       end
 
       role :viewer do
-        on(:account, actions: [:read])
+        on(:account, permissions: [:read])
       end
     end
     """)

@@ -30,7 +30,7 @@ Feature: Authorize event guards
     When alice sends the "delete" event for project "7"
     Then the event raises instead of reaching the handler
 
-  Scenario: An action the entity type does not define raises when the event arrives
+  Scenario: A permission the entity type does not define raises when the event arrives
     Given user "alice" has the role "admin" on project "7"
     When alice sends the "typo" event for project "7"
     Then the event raises ArgumentError

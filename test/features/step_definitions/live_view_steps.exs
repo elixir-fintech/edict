@@ -14,10 +14,10 @@ defmodule Edict.Features.StepDefinitions.LiveViewSteps do
 
   step "the LiveView guards {string} on {string} from param {string}",
        %{
-         args: [action, entity, param]
+         args: [permission, entity, param]
        } = context do
     context
-    |> Map.put(:lv_action, String.to_existing_atom(action))
+    |> Map.put(:lv_permission, String.to_existing_atom(permission))
     |> Map.put(:lv_entity, String.to_existing_atom(entity))
     |> Map.put(:lv_param, param)
   end
@@ -35,12 +35,14 @@ defmodule Edict.Features.StepDefinitions.LiveViewSteps do
     Map.put(context, :mount, mount(context, user, %{context.lv_param => [first, second]}))
   end
 
-  step "{word} mounts the LiveView for project {string} with action {string}",
-       %{args: [user, id, action]} = context do
+  step "{word} mounts the LiveView for project {string} with permission {string}",
+       %{args: [user, id, permission]} = context do
     outcome =
       try do
         # The typo must not exist as an atom, so String.to_atom/1 is deliberate.
-        mount(%{context | lv_action: String.to_atom(action)}, user, %{context.lv_param => id})
+        mount(%{context | lv_permission: String.to_atom(permission)}, user, %{
+          context.lv_param => id
+        })
       rescue
         e in ArgumentError -> {:raised, e}
       end
@@ -106,7 +108,7 @@ defmodule Edict.Features.StepDefinitions.LiveViewSteps do
   defp mount(context, user, params) do
     opts = %{
       edict_config: context.project_config,
-      action: context.lv_action,
+      permission: context.lv_permission,
       entity_type: context.lv_entity,
       param: context.lv_param
     }

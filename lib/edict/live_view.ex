@@ -5,7 +5,7 @@ defmodule Edict.LiveView do
   ## Usage
 
       on_mount {Edict.LiveView,
-        action: :read,
+        permission: :read,
         entity_type: :project,
         param: "project_id"}
   """

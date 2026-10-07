@@ -25,18 +25,18 @@ defmodule Edict.TestHelpers do
 
   @doc "Asserts that a user has the given permission on an entity."
   @spec assert_can(Edict.id(), atom(), struct()) :: :ok
-  def assert_can(user_id, action, entity) do
+  def assert_can(user_id, permission, entity) do
     doc = Edict.load_document(user_id)
 
-    unless Edict.can?(doc, action, entity) do
+    unless Edict.can?(doc, permission, entity) do
       entity_type = Edict.Entity.entity_type(entity)
       entity_id = Edict.Entity.entity_id(entity)
 
       raise ExUnit.AssertionError,
         message:
-          "Expected user #{inspect(user_id)} to have #{inspect(action)} " <>
+          "Expected user #{inspect(user_id)} to have #{inspect(permission)} " <>
             "on #{inspect(entity_type)} #{inspect(entity_id)}, but they don't. " <>
-            describe_roles(doc, action, entity_type, entity_id)
+            describe_roles(doc, permission, entity_type, entity_id)
     end
 
     :ok
@@ -44,28 +44,28 @@ defmodule Edict.TestHelpers do
 
   @doc "Asserts that a user does NOT have the given permission on an entity."
   @spec refute_can(Edict.id(), atom(), struct()) :: :ok
-  def refute_can(user_id, action, entity) do
+  def refute_can(user_id, permission, entity) do
     doc = Edict.load_document(user_id)
 
-    if Edict.can?(doc, action, entity) do
+    if Edict.can?(doc, permission, entity) do
       entity_type = Edict.Entity.entity_type(entity)
       entity_id = Edict.Entity.entity_id(entity)
 
       raise ExUnit.AssertionError,
         message:
-          "Expected user #{inspect(user_id)} NOT to have #{inspect(action)} " <>
+          "Expected user #{inspect(user_id)} NOT to have #{inspect(permission)} " <>
             "on #{inspect(entity_type)} #{inspect(entity_id)}, but they do. " <>
-            describe_roles(doc, action, entity_type, entity_id)
+            describe_roles(doc, permission, entity_type, entity_id)
     end
 
     :ok
   end
 
   # A strong action is decided by the DB, so report the DB's roles, not the cache's.
-  defp describe_roles(doc, action, entity_type, entity_id) do
+  defp describe_roles(doc, permission, entity_type, entity_id) do
     config = Edict.config()
 
-    if config.config_module.strong_action?(action) do
+    if config.config_module.strong_action?(permission) do
       roles =
         config
         |> Edict.Core.list_entity_roles(doc.user_id, to_string(entity_type), entity_id)

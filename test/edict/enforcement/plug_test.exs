@@ -34,7 +34,7 @@ defmodule Edict.Enforcement.PlugTest do
     opts =
       EdictPlug.init(
         edict_config: edict_config,
-        action: :read,
+        permission: :read,
         entity_type: :project,
         entity_from: fn conn -> conn.params["id"] end
       )
@@ -130,31 +130,31 @@ defmodule Edict.Enforcement.PlugTest do
 
   test "init rejects strong: true" do
     assert_raise ArgumentError, ~r/:strong/, fn ->
-      EdictPlug.init(action: :read, entity_type: :project, param: "id", strong: true)
+      EdictPlug.init(permission: :read, entity_type: :project, param: "id", strong: true)
     end
   end
 
   test "init rejects strong: false" do
     assert_raise ArgumentError, ~r/Edict\.can\?/, fn ->
-      EdictPlug.init(action: :read, entity_type: :project, param: "id", strong: false)
+      EdictPlug.init(permission: :read, entity_type: :project, param: "id", strong: false)
     end
   end
 
-  test "init rejects missing :action" do
-    assert_raise ArgumentError, ~r/:action/, fn ->
+  test "init rejects missing :permission" do
+    assert_raise ArgumentError, ~r/:permission/, fn ->
       EdictPlug.init(entity_type: :project, param: "id")
     end
   end
 
   test "init rejects missing :entity_type" do
     assert_raise ArgumentError, ~r/:entity_type/, fn ->
-      EdictPlug.init(action: :read, param: "id")
+      EdictPlug.init(permission: :read, param: "id")
     end
   end
 
   test "init rejects a missing entity ID source" do
     assert_raise ArgumentError, ~r/:param or :entity_from/, fn ->
-      EdictPlug.init(action: :read, entity_type: :project)
+      EdictPlug.init(permission: :read, entity_type: :project)
     end
   end
 
@@ -171,8 +171,8 @@ defmodule Edict.Enforcement.PlugTest do
     assert result.status == 403
   end
 
-  test "an action the entity type does not define raises", %{opts: opts} do
-    typo_opts = Map.put(opts, :action, :aprove)
+  test "a permission the entity type does not define raises", %{opts: opts} do
+    typo_opts = Map.put(opts, :permission, :aprove)
 
     conn =
       Plug.Test.conn(:get, "/projects/7", %{})

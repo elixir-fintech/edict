@@ -1,6 +1,6 @@
 defmodule Edict.Config do
   @moduledoc """
-  DSL for defining entity types, roles, and scoped actions.
+  DSL for defining entity types, roles, and scoped permissions.
 
   ## Usage
 
@@ -17,8 +17,8 @@ defmodule Edict.Config do
         end
 
         role :admin do
-          on :organization, actions: [:read, :write, :delete]
-          on :project, actions: [:read, :write, :delete]
+          on :organization, permissions: [:read, :write, :delete]
+          on :project, permissions: [:read, :write, :delete]
         end
       end
 
@@ -26,10 +26,10 @@ defmodule Edict.Config do
   naming the same `struct:` would generate duplicate `Edict.Entity` implementations.
 
   This compiles into fast lookup functions:
-  - `actions_for/2` — actions for a role on an entity type
+  - `permissions_for/2` — permissions a role grants on an entity type
   - `valid_role?/1` — whether a role is defined
   - `valid_entity_type?/1` — whether an entity type is defined
-  - `valid_action?/2` — whether an action is valid for an entity type
+  - `valid_permission?/2` — whether a permission is valid for an entity type
   - `strong_action?/1` — whether enforcement always checks an action against the database
   - `entity_types/0` — list of valid entity types
   - `user_id_from_assigns/1` — extract user ID from conn/socket assigns
@@ -42,7 +42,7 @@ defmodule Edict.Config do
 
       Module.register_attribute(__MODULE__, :edict_entities, accumulate: true)
       Module.register_attribute(__MODULE__, :edict_roles, accumulate: true)
-      Module.register_attribute(__MODULE__, :edict_role_actions, accumulate: true)
+      Module.register_attribute(__MODULE__, :edict_role_permissions, accumulate: true)
       Module.register_attribute(__MODULE__, :edict_user_from_assigns, accumulate: false)
       Module.register_attribute(__MODULE__, :edict_on_unauthorized, accumulate: false)
       Module.register_attribute(__MODULE__, :edict_strong_actions, accumulate: false)
@@ -166,19 +166,19 @@ defmodule Edict.Config do
   end
 
   @doc """
-  Inside `role/2`: grants `actions:` on an entity type declared in `entity_types/1`.
+  Inside `role/2`: grants `permissions:` on an entity type declared in `entity_types/1`.
 
   Use one `on` per entity type in a role: a second one for the same entity type
   is ignored (its generated clause never matches).
   """
   defmacro on(entity_type, opts) do
-    actions = opts[:actions] || []
+    permissions = opts[:permissions] || []
 
     quote do
-      Module.put_attribute(__MODULE__, :edict_role_actions, {
+      Module.put_attribute(__MODULE__, :edict_role_permissions, {
         @edict_current_role,
         unquote(entity_type),
-        unquote(actions)
+        unquote(permissions)
       })
     end
   end
@@ -186,7 +186,7 @@ defmodule Edict.Config do
   defmacro __before_compile__(env) do
     entities = Module.get_attribute(env.module, :edict_entities)
     roles = Module.get_attribute(env.module, :edict_roles)
-    role_actions = Module.get_attribute(env.module, :edict_role_actions)
+    role_permissions = Module.get_attribute(env.module, :edict_role_permissions)
 
     strong_actions =
       strong_actions_or_none(Module.get_attribute(env.module, :edict_strong_actions))
@@ -196,8 +196,8 @@ defmodule Edict.Config do
 
     entity_type_names = Enum.map(entities, fn {name, _, _} -> name end)
 
-    validate_entity_types!(role_actions, entity_type_names)
-    validate_strong_actions!(strong_actions, role_actions)
+    validate_entity_types!(role_permissions, entity_type_names)
+    validate_strong_actions!(strong_actions, role_permissions)
 
     quote do
       @doc "Returns the list of valid entity types."
@@ -212,17 +212,17 @@ defmodule Edict.Config do
       @spec valid_role?(term()) :: boolean()
       def valid_role?(role), do: role in unquote(roles)
 
-      @spec actions_for(atom(), atom()) :: [atom()]
-      unquote_splicing(actions_for_clauses(role_actions))
+      @spec permissions_for(atom(), atom()) :: [atom()]
+      unquote_splicing(permissions_for_clauses(role_permissions))
 
-      @doc "Returns the actions a role grants on an entity type. Returns `[]` for undefined combinations."
-      def actions_for(_role, _entity_type), do: []
+      @doc "Returns the permissions a role grants on an entity type. Returns `[]` for undefined combinations."
+      def permissions_for(_role, _entity_type), do: []
 
-      @spec valid_action?(atom(), atom()) :: boolean()
-      unquote_splicing(valid_action_clauses(role_actions))
+      @spec valid_permission?(atom(), atom()) :: boolean()
+      unquote_splicing(valid_permission_clauses(role_permissions))
 
-      @doc "Returns `true` if the action is valid for the given entity type."
-      def valid_action?(_action, _entity_type), do: false
+      @doc "Returns `true` if the permission is valid for the given entity type."
+      def valid_permission?(_permission, _entity_type), do: false
 
       @doc "Returns `true` if the action is strong: enforcement always checks it against the database."
       @spec strong_action?(atom()) :: boolean()
@@ -242,8 +242,9 @@ defmodule Edict.Config do
 
   # The functions below run at compile time, from __before_compile__/1.
 
-  defp validate_entity_types!(role_actions, entity_type_names) do
-    for {role, entity_type, _actions} <- role_actions, entity_type not in entity_type_names do
+  defp validate_entity_types!(role_permissions, entity_type_names) do
+    for {role, entity_type, _permissions} <- role_permissions,
+        entity_type not in entity_type_names do
       raise CompileError,
         description:
           "Role #{inspect(role)} references unknown entity type #{inspect(entity_type)}. " <>
@@ -253,24 +254,24 @@ defmodule Edict.Config do
     :ok
   end
 
-  defp actions_for_clauses(role_actions) do
-    Enum.map(role_actions, fn {role, entity_type, actions} ->
+  defp permissions_for_clauses(role_permissions) do
+    Enum.map(role_permissions, fn {role, entity_type, permissions} ->
       quote do
-        def actions_for(unquote(role), unquote(entity_type)), do: unquote(actions)
+        def permissions_for(unquote(role), unquote(entity_type)), do: unquote(permissions)
       end
     end)
   end
 
-  # One valid_action?/2 clause per action any role grants on an entity type
-  defp valid_action_clauses(role_actions) do
-    role_actions
-    |> Enum.flat_map(fn {_role, entity_type, actions} ->
-      Enum.map(actions, &{&1, entity_type})
+  # One valid_permission?/2 clause per permission any role grants on an entity type
+  defp valid_permission_clauses(role_permissions) do
+    role_permissions
+    |> Enum.flat_map(fn {_role, entity_type, permissions} ->
+      Enum.map(permissions, &{&1, entity_type})
     end)
     |> Enum.uniq()
-    |> Enum.map(fn {action, entity_type} ->
+    |> Enum.map(fn {permission, entity_type} ->
       quote do
-        def valid_action?(unquote(action), unquote(entity_type)), do: true
+        def valid_permission?(unquote(permission), unquote(entity_type)), do: true
       end
     end)
   end
@@ -310,8 +311,9 @@ defmodule Edict.Config do
 
   defp unauthorized_fn(on_unauthorized), do: on_unauthorized
 
-  defp validate_strong_actions!(strong_actions, role_actions) do
-    granted = Enum.flat_map(role_actions, fn {_role, _entity_type, actions} -> actions end)
+  defp validate_strong_actions!(strong_actions, role_permissions) do
+    granted =
+      Enum.flat_map(role_permissions, fn {_role, _entity_type, permissions} -> permissions end)
 
     case Enum.reject(strong_actions, &(&1 in granted)) do
       [] ->
@@ -320,8 +322,8 @@ defmodule Edict.Config do
       unknown ->
         raise CompileError,
           description:
-            "strong_actions lists actions no role grants: #{inspect(unknown)}. " <>
-              "Granted actions: #{inspect(Enum.uniq(granted))}"
+            "strong_actions lists permissions no role grants: #{inspect(unknown)}. " <>
+              "Granted permissions: #{inspect(Enum.uniq(granted))}"
     end
   end
 end

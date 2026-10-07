@@ -5,7 +5,7 @@ defmodule Edict.Plug do
   ## Usage
 
       plug Edict.Plug,
-        action: :manage,
+        permission: :manage,
         entity_type: :project,
         param: "project_id"
   """

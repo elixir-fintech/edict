@@ -11,13 +11,13 @@ defmodule Edict.Enforcement.LiveView do
   ## Usage
 
       on_mount {Edict.Enforcement.LiveView,
-        action: :read,
+        permission: :read,
         entity_type: :project,
         param: "id"}
 
   ## Options
 
-    * `:action` — the action atom to check (e.g., `:read`, `:write`)
+    * `:permission` — the permission atom to check (e.g., `:read`, `:write`)
     * `:entity_type` — the entity type atom (e.g., `:project`)
     * `:param` — the name of the route param holding the entity ID (e.g., `"id"`)
     * `:entity_from` — used when `:param` is not given: a function `(params -> entity_id)`.
@@ -30,13 +30,13 @@ defmodule Edict.Enforcement.LiveView do
       always uses `Edict.config/0`, so neither sees this option
 
   A missing param yields no entity ID, so the check fails and the user is unauthorized.
-  An action the config does not define for the entity type raises `ArgumentError`
+  A permission the config does not define for the entity type raises `ArgumentError`
   on mount, instead of silently denying.
 
   Strong actions (see `Edict.Config.strong_actions/1`) are always checked against
   the database. The `:strong` option is rejected: only `Edict.can?` may opt out.
 
-  Missing `:action`, `:entity_type`, or both `:param` and `:entity_from` raise
+  Missing `:permission`, `:entity_type`, or both `:param` and `:entity_from` raise
   `ArgumentError` on mount, before any cache or DB access.
 
   After mount, every version bump for the user re-runs the same check against
@@ -70,9 +70,9 @@ defmodule Edict.Enforcement.LiveView do
     opts = Map.new(opts)
     Helpers.validate_enforcement_opts!(opts, "Edict.LiveView")
     {edict_config, user_id} = Helpers.resolve(opts, socket.assigns)
-    Helpers.validate_action!(edict_config.config_module, opts.action, opts.entity_type)
+    Helpers.validate_permission!(edict_config.config_module, opts.permission, opts.entity_type)
 
-    policy = {opts.action, opts.entity_type, entity_id(opts, params)}
+    policy = {opts.permission, opts.entity_type, entity_id(opts, params)}
     mount(socket, edict_config, user_id, policy)
   end
 
@@ -96,8 +96,8 @@ defmodule Edict.Enforcement.LiveView do
   defp entity_id(%{param: param}, params), do: params[param]
   defp entity_id(%{entity_from: entity_from}, params), do: entity_from.(params)
 
-  defp authorize(socket, edict_config, document, {action, entity_type, entity_id}) do
-    if Helpers.authorized?(edict_config, document, action, entity_type, entity_id, []) do
+  defp authorize(socket, edict_config, document, {permission, entity_type, entity_id}) do
+    if Helpers.authorized?(edict_config, document, permission, entity_type, entity_id, []) do
       {:cont, assign(socket, :current_user_roles, document)}
     else
       unauthorized(socket, edict_config)

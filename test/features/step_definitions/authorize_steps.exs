@@ -6,9 +6,14 @@ defmodule Edict.Features.GuardedProjectLive do
   use Phoenix.LiveView
   use Edict.Enforcement.Authorize
 
-  authorize("delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project)
-  authorize("update", action: :write, entity_from_assigns: :project_id, entity_type: :project)
-  authorize("typo", action: :aprove, entity_from_assigns: :project_id, entity_type: :project)
+  authorize("delete",
+    permission: :delete,
+    entity_from_assigns: :project_id,
+    entity_type: :project
+  )
+
+  authorize("update", permission: :write, entity_from_assigns: :project_id, entity_type: :project)
+  authorize("typo", permission: :aprove, entity_from_assigns: :project_id, entity_type: :project)
 
   def render(assigns), do: ~H""
 

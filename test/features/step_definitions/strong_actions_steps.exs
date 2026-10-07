@@ -56,19 +56,21 @@ defmodule Edict.Features.StepDefinitions.StrongActionsSteps do
     context
   end
 
-  step ~r/^(\w+) cannot "([^"]+)" on account "([^"]+)"$/, %{args: [user, action, id]} = context do
-    refute authorized?(context, user, action, id, [])
+  step ~r/^(\w+) cannot "([^"]+)" on account "([^"]+)"$/,
+       %{args: [user, permission, id]} = context do
+    refute authorized?(context, user, permission, id, [])
     context
   end
 
   step ~r/^(\w+) can "([^"]+)" on account "([^"]+)" with strong: false$/,
-       %{args: [user, action, id]} = context do
-    assert authorized?(context, user, action, id, strong: false)
+       %{args: [user, permission, id]} = context do
+    assert authorized?(context, user, permission, id, strong: false)
     context
   end
 
-  step ~r/^(\w+) can "([^"]+)" on account "([^"]+)"$/, %{args: [user, action, id]} = context do
-    assert authorized?(context, user, action, id, [])
+  step ~r/^(\w+) can "([^"]+)" on account "([^"]+)"$/,
+       %{args: [user, permission, id]} = context do
+    assert authorized?(context, user, permission, id, [])
     context
   end
 
@@ -81,11 +83,11 @@ defmodule Edict.Features.StepDefinitions.StrongActionsSteps do
     })
   end
 
-  defp authorized?(context, user, action, id, opts) do
+  defp authorized?(context, user, permission, id, opts) do
     Helpers.authorized?(
       context.config,
       context.documents[user],
-      String.to_existing_atom(action),
+      String.to_existing_atom(permission),
       :account,
       id,
       opts

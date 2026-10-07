@@ -10,6 +10,6 @@ defmodule Edict.Test.StrongConfig do
   end
 
   role :treasurer do
-    on(:account, actions: [:read, :approve_transfer])
+    on(:account, permissions: [:read, :approve_transfer])
   end
 end
