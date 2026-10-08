@@ -500,12 +500,29 @@ defmodule Edict.Router do
     route_permission
   end
 
-  defp resolve_permission!(_entity_type, _action, _route_permission, block_permission, nil)
-       when is_atom_present(block_permission),
-       do: block_permission
+  # Without a config module the conflict between the block permission and
+  # the action's alias cannot be checked — and silently guarding every
+  # route with the block permission would downgrade mutating routes. Fail
+  # instead, asking for an explicit route permission:.
+  defp resolve_permission!(
+         _entity_type,
+         action,
+         _route_permission,
+         block_permission,
+         nil
+       )
+       when is_atom_present(block_permission) do
+    raise CompileError,
+      description:
+        "cannot reconcile the edict block's #{inspect(block_permission)} with action " <>
+          "#{inspect(action)}: config :edict, config_module is not available at compile " <>
+          "time, so the conflict check cannot run. Pass permission: on the route, or " <>
+          "make the config module available when the router compiles"
+  end
 
-  # No config module at compile time: the raw action name stands in for the
-  # permission, and the runtime validate_permission!/3 is the backstop.
+  # No config module at compile time and no permissions declared on the
+  # route or block: the raw action name stands in for the permission, and
+  # the runtime validate_permission!/3 is the backstop.
   defp resolve_permission!(_entity_type, action, _route_permission, _block_permission, nil),
     do: action
 
@@ -535,9 +552,6 @@ defmodule Edict.Router do
               "route to choose one explicitly"
     end
   end
-
-  defp resolve_permission!(_entity_type, action, _route_permission, _block_permission, nil),
-    do: action
 
   defp resolve_permission!(
          entity_type,
@@ -591,9 +605,11 @@ defmodule Edict.Router do
       IO.warn(
         "Edict router validation skipped: config :edict, config_module is not " <>
           "available at compile time, so permissions derived from action names " <>
-          "fall back to the raw action name and entity types and permissions " <>
-          "are not checked. Edict.Enforcement.Helpers.validate_permission!/3 " <>
-          "remains the runtime backstop",
+          "fall back to the raw action name, entity types and permissions are " <>
+          "not checked, and a block permission: on controller routes without " <>
+          "their own permission: fails to compile. " <>
+          "Edict.Enforcement.Helpers.validate_permission!/3 remains the runtime " <>
+          "backstop",
         caller
       )
     end

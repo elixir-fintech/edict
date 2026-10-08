@@ -33,3 +33,9 @@ Feature: Action derivation
     And an edict block for "project" declares permission "write"
     When a "show" route for "project" is declared inside an edict block without "permission:"
     Then compilation fails asking for an explicit route permission
+
+  Scenario: A block permission without a config module fails compilation
+    Given the config module is not available at compile time
+    And an edict block for "project" declares permission "write"
+    When a "show" route for "project" is declared inside an edict block without "permission:"
+    Then compilation fails mentioning the unavailable config module
