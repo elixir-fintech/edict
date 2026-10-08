@@ -49,6 +49,11 @@ jobs:
         restore-keys: ${{ runner.os }}-mix-
     - name: Install dependencies
       run: mix deps.get
+    - name: Audit dependencies for known vulnerabilities
+      run: mix deps.audit
+    - name: Security scan
+      # --skip honors the inline sobelow_skip comments for reviewed false positives
+      run: mix sobelow --exit low --skip
     - name: Wait for PostgreSQL
       run: |
         until pg_isready -h localhost -p 5432 -U postgres; do
