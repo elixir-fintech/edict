@@ -43,36 +43,38 @@ defmodule Edict.Audit do
   end
 
   @doc """
-  Reads and scans `paths`, returning only the findings worth reporting:
-  modules with undeclared events or unverifiable dynamic event names.
+  Scans `{path, source}` pairs (see `find_sources/1`), returning only the
+  findings worth reporting: modules with undeclared events or unverifiable
+  dynamic event names.
   """
-  @spec scan_paths([Path.t()]) :: [t()]
-  def scan_paths(paths) do
-    paths
-    |> Enum.flat_map(&scan_source(File.read!(&1), &1))
+  @spec scan_paths([{Path.t(), String.t()}]) :: [t()]
+  def scan_paths(sources) do
+    sources
+    |> Enum.flat_map(fn {path, source} -> scan_source(source, path) end)
     |> Enum.filter(&reportable?/1)
   end
 
   @doc """
-  Expands `glob` (default `#{@default_glob}`) to the LiveView source files
-  in scope: files using `Phoenix.LiveView` or `Edict.Enforcement.Authorize`,
-  or named `*_live.ex`.
+  Expands `glob` (default `#{@default_glob}`) to the LiveView sources in
+  scope — files using `Phoenix.LiveView` or `Edict.Enforcement.Authorize`,
+  or named `*_live.ex` — as `{path, source}` pairs read once for both the
+  filter and the scan.
   """
-  @spec find_sources(String.t()) :: [Path.t()]
+  @spec find_sources(String.t()) :: [{Path.t(), String.t()}]
   def find_sources(glob \\ @default_glob) do
     glob
     |> Path.wildcard()
-    |> Enum.filter(&live_view_file?/1)
+    |> Enum.map(&{&1, File.read!(&1)})
+    |> Enum.filter(fn {path, source} -> live_view_source?(path, source) end)
   end
 
   @doc """
-  The audit's exit status: non-zero exactly when any finding has undeclared
-  events. Unverifiable names never fail the audit.
+  Whether the audit failed: true exactly when any finding has undeclared
+  events. Unverifiable names never fail the audit; the task turns this into
+  its non-zero exit.
   """
-  @spec exit_status([t()]) :: :ok | {:shutdown, 1}
-  def exit_status(findings) do
-    if Enum.any?(findings, &(&1.undeclared != [])), do: {:shutdown, 1}, else: :ok
-  end
+  @spec failed?([t()]) :: boolean()
+  def failed?(findings), do: Enum.any?(findings, &(&1.undeclared != []))
 
   defp top_level_modules({:__block__, _, nodes}), do: Enum.filter(nodes, &defmodule?/1)
 
@@ -152,6 +154,14 @@ defmodule Edict.Audit do
   defp collect_event(event, acc) when is_binary(event),
     do: %{acc | events: [event | acc.events]}
 
+  # A pinned literal — handle_event("save" = event, ...) — names the event
+  # at compile time after all, on either side of the match.
+  defp collect_event({:=, _, [event, _]}, acc) when is_binary(event),
+    do: %{acc | events: [event | acc.events]}
+
+  defp collect_event({:=, _, [_, event]}, acc) when is_binary(event),
+    do: %{acc | events: [event | acc.events]}
+
   # A variable, an underscore or an interpolation: the name is decided at
   # runtime, so the module's coverage cannot be verified.
   defp collect_event(event, acc), do: %{acc | dynamic: [Macro.to_string(event) | acc.dynamic]}
@@ -173,10 +183,9 @@ defmodule Edict.Audit do
 
   defp reportable?(finding), do: finding.undeclared != [] or finding.unverifiable != []
 
-  defp live_view_file?(path) do
-    source = File.read!(path)
-
-    String.contains?(source, "use Phoenix.LiveView") or
+  defp live_view_source?(path, source) do
+    String.ends_with?(path, "_live.ex") or
+      String.contains?(source, "use Phoenix.LiveView") or
       String.contains?(source, "use Edict.Enforcement.Authorize") or
       String.ends_with?(path, "_live.ex")
   end

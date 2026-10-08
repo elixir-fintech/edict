@@ -87,6 +87,22 @@ defmodule Edict.AuditTest do
   """
 
   # A local authorize/2 inside a function body must not read as a declaration.
+
+  # A pinned literal names the event at compile time after all.
+  @pinned_head ~S"""
+  defmodule MyAppWeb.PinnedHeadLive do
+    use Phoenix.LiveView
+    use Edict.Enforcement.Authorize
+
+    edict_entity :project, from: :project_id
+    authorize "save", :write
+
+    def handle_event("save" = event, _params, socket), do: {:noreply, socket}
+    def handle_event(_event = "ping", _params, socket), do: {:noreply, socket}
+  end
+  """
+
+  # A local authorize/2 inside a function body must not read as a declaration.
   @local_helper ~S"""
   defmodule MyAppWeb.SelfGuardedLive do
     use Phoenix.LiveView
@@ -129,7 +145,7 @@ defmodule Edict.AuditTest do
 
     assert finding.undeclared == []
     assert finding.unverifiable == ["name"]
-    assert Audit.exit_status([finding]) == :ok
+    refute Audit.failed?([finding])
   end
 
   test "a view that forgot the use has every event undeclared" do
@@ -149,21 +165,25 @@ defmodule Edict.AuditTest do
     assert finding.undeclared == []
   end
 
+  test "a pinned literal in a clause head counts as the event name" do
+    [finding] = Audit.scan_source(@pinned_head, "pinned_head_live.ex")
+
+    assert finding.undeclared == ["ping"]
+    assert finding.unverifiable == []
+  end
+
   test "an authorize call inside a function body is not a declaration" do
     [finding] = Audit.scan_source(@local_helper, "self_guarded_live.ex")
 
     assert finding.undeclared == ["save"]
   end
 
-  test "exit status is non-zero exactly when events are undeclared" do
-    assert Audit.exit_status(Audit.scan_source(@gap, "gap_live.ex")) == {:shutdown, 1}
-
-    assert Audit.exit_status(Audit.scan_source(@forgot_use, "forgot_use_live.ex")) ==
-             {:shutdown, 1}
-
-    assert Audit.exit_status(Audit.scan_source(@clean, "clean_live.ex")) == :ok
-    assert Audit.exit_status(Audit.scan_source(@dynamic, "dynamic_live.ex")) == :ok
-    assert Audit.exit_status([]) == :ok
+  test "the audit fails exactly when events are undeclared" do
+    assert Audit.failed?(Audit.scan_source(@gap, "gap_live.ex"))
+    assert Audit.failed?(Audit.scan_source(@forgot_use, "forgot_use_live.ex"))
+    refute Audit.failed?(Audit.scan_source(@clean, "clean_live.ex"))
+    refute Audit.failed?(Audit.scan_source(@dynamic, "dynamic_live.ex"))
+    refute Audit.failed?([])
   end
 
   describe "over files" do
@@ -204,7 +224,12 @@ defmodule Edict.AuditTest do
 
     test "find_sources keeps LiveViews and _live.ex files, dropping the rest",
          %{glob: glob, dir: dir} do
-      assert Enum.sort(Audit.find_sources(glob)) == [
+      # Pairs of {path, source}: the paths select, scan_paths (below)
+      # consumes the already-read source.
+      assert glob
+             |> Audit.find_sources()
+             |> Enum.map(&elem(&1, 0))
+             |> Enum.sort() == [
                Path.join(dir, "mixed_live.ex"),
                Path.join(dir, "view.ex"),
                Path.join(dir, "wrapper_live.ex")

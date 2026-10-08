@@ -70,6 +70,7 @@ defmodule Edict.Enforcement.Authorize do
   """
 
   alias Edict.Enforcement.Helpers
+  import Edict.Guards
 
   @required_options [:permission, :entity_from_assigns, :entity_type]
 
@@ -100,8 +101,7 @@ defmodule Edict.Enforcement.Authorize do
   defmacro edict_entity(entity_type, opts \\ []) do
     from = opts[:from]
 
-    # nil is an atom, so it must be excluded explicitly.
-    unless is_atom(from) and not is_nil(from) do
+    unless is_atom_present(from) do
       raise CompileError,
         description: "edict_entity requires the :from option: the assign holding the entity ID"
     end
