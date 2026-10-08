@@ -246,6 +246,12 @@ defmodule Edict.Enforcement.AuthorizeTest do
         compile_authorize_module(~s|edict_entity :project|)
       end
     end
+
+    test "a non-literal permission fails with a clear message" do
+      assert_raise CompileError, ~r/permission atom or keyword options/, fn ->
+        compile_authorize(~s|authorize "delete", @permission|)
+      end
+    end
   end
 
   defp build_socket(assigns) do

@@ -143,7 +143,17 @@ defmodule Edict.Enforcement.Authorize do
   end
 
   # The keyword form: every option is stated on the declaration itself.
+  # A non-literal second argument (a module attribute, a function call) is an
+  # AST node rather than a keyword list, so it is caught here with a message
+  # naming both accepted forms.
   defp keyword_authorization(event_name, opts) do
+    unless Keyword.keyword?(opts) do
+      raise CompileError,
+        description:
+          "authorize expects a permission atom or keyword options, " <>
+            "got: #{Macro.to_string(opts)}"
+    end
+
     Helpers.require_options!(opts, @required_options, "authorize")
     Helpers.reject_strong!(opts)
 
