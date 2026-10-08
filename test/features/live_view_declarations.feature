@@ -11,4 +11,8 @@ Feature: LiveView declarations
     When it declares 'authorize ["save", "publish"], :write'
     Then the "save" and "publish" events are guarded with permission "write" on entity type "project"
 
-  # The audit scenario from the spec lands with milestone 5 (mix edict.audit).
+  Scenario: An unguarded event is reported by the audit
+    Given a LiveView with handle_event clauses for "save" and "ping"
+    And only "save" is declared
+    When "mix edict.audit" runs
+    Then it reports "ping" as undeclared and exits non-zero
