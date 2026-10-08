@@ -257,11 +257,16 @@ defmodule Edict.AuditTest do
                ]
     end
 
+    # Mix.Shell.Process keeps the task's real output out of the test run's
+    # console, buffered for assertions instead.
     test "the task exits non-zero when events are undeclared", %{glob: glob} do
+      Mix.shell(Mix.Shell.Process)
+
       assert catch_exit(Mix.Tasks.Edict.Audit.run([glob])) == {:shutdown, 1}
     end
 
     test "the task stays at zero when everything is declared", %{dir: dir} do
+      Mix.shell(Mix.Shell.Process)
       write(dir, "only.ex", @clean)
 
       assert Mix.Tasks.Edict.Audit.run([Path.join(dir, "only.ex")]) == :ok
