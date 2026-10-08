@@ -175,6 +175,30 @@ defmodule Edict.ConfigTest do
     end
   end
 
+  describe "on/2 duplicates" do
+    test "a second on for the same entity type in a role fails compilation" do
+      assert_raise CompileError, ~r/more than once/, fn ->
+        compile_config("""
+        role :editor do
+          on(:account, permissions: [:write])
+          on(:account, permissions: [:delete])
+        end
+        """)
+      end
+    end
+
+    test "a second on for the same entity type in strong_permissions fails compilation" do
+      assert_raise CompileError, ~r/more than once/, fn ->
+        compile_config("""
+        strong_permissions do
+          on(:account, permissions: [:read])
+          on(:account, permissions: [:write])
+        end
+        """)
+      end
+    end
+  end
+
   describe "permission_alias/1" do
     test "maps the shipped default action names" do
       assert Edict.Test.Config.permission_alias(:index) == :read

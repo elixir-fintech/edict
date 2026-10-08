@@ -266,9 +266,10 @@ defmodule Edict.Config do
   Inside `role/2`: grants `permissions:` on an entity type declared in `entity_types/1`.
   Inside `strong_permissions/1`: marks the listed permissions strong on the entity type.
 
-  Use one `on` per entity type in a role: a second one for the same entity type
-  is ignored (its generated clause never matches). Anywhere else it fails
-  compilation.
+  Use one `on` per entity type in a role and in `strong_permissions/1`: a
+  second declaration for the same entity type fails compilation, so its
+  permissions are never silently dropped. Anywhere else it fails compilation
+  too.
   """
   defmacro on(entity_type, opts) do
     permissions = opts[:permissions] || []
@@ -303,7 +304,8 @@ defmodule Edict.Config do
     roles = Module.get_attribute(env.module, :edict_roles)
     role_permissions = Module.get_attribute(env.module, :edict_role_permissions)
     role_extends = Module.get_attribute(env.module, :edict_role_extends)
-    strong_pairs = strong_pairs(Module.get_attribute(env.module, :edict_strong_pairs))
+    strong_declarations = Module.get_attribute(env.module, :edict_strong_pairs)
+    strong_pairs = strong_pairs(strong_declarations)
 
     permission_aliases =
       merged_permission_aliases(Module.get_attribute(env.module, :edict_permission_aliases))
@@ -316,6 +318,7 @@ defmodule Edict.Config do
     resolved_permissions = resolve_role_permissions!(roles, role_extends, role_permissions)
 
     validate_entity_types!(role_permissions, entity_type_names)
+    validate_duplicate_declarations!(role_permissions, strong_declarations)
     validate_strong_pairs!(strong_pairs, role_permissions, entity_type_names)
 
     quote do
@@ -369,6 +372,36 @@ defmodule Edict.Config do
   end
 
   # The functions below run at compile time, from __before_compile__/1.
+
+  # A second `on` for the same entity type used to be silently ignored while
+  # valid_permission?/2 still counted its permissions — the two disagreed.
+  # Failing compilation removes the inconsistency.
+  defp validate_duplicate_declarations!(role_permissions, strong_declarations) do
+    role_duplicates =
+      role_permissions
+      |> Enum.frequencies_by(fn {role, entity_type, _} -> {role, entity_type} end)
+      |> Enum.filter(fn {_key, count} -> count > 1 end)
+      |> Enum.map(fn {{role, entity_type}, _} ->
+        "#{inspect(role)} on #{inspect(entity_type)}"
+      end)
+
+    strong_duplicates =
+      strong_declarations
+      |> Enum.frequencies_by(&elem(&1, 0))
+      |> Enum.filter(fn {_entity_type, count} -> count > 1 end)
+      |> Enum.map(fn {entity_type, _} -> "on #{inspect(entity_type)} in strong_permissions" end)
+
+    case role_duplicates ++ strong_duplicates do
+      [] ->
+        :ok
+
+      duplicates ->
+        raise CompileError,
+          description:
+            "on/2 is declared more than once for: #{Enum.join(duplicates, ", ")}. " <>
+              "Combine the permissions into one declaration"
+    end
+  end
 
   defp validate_entity_types!(role_permissions, entity_type_names) do
     for {role, entity_type, _permissions} <- role_permissions,
