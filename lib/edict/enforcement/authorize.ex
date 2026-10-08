@@ -8,6 +8,9 @@ defmodule Edict.Enforcement.Authorize do
         use Phoenix.LiveView
         use Edict.Enforcement.Authorize
 
+        # The module default: entity type and the assign holding its ID, once per view
+        edict_entity :project, from: :project_id
+
         # Assigns current_user_roles; the guards read it
         on_mount {Edict.LiveView, permission: :read, entity_type: :project, param: "project_id"}
 
@@ -16,8 +19,9 @@ defmodule Edict.Enforcement.Authorize do
           {:ok, assign(socket, :project_id, project_id)}
         end
 
-        authorize "delete", permission: :delete, entity_from_assigns: :project_id, entity_type: :project
-        authorize "update", permission: :write, entity_from_assigns: :project_id, entity_type: :project
+        authorize "delete", :delete
+        authorize ["save", "publish"], :write
+        authorize "export", permission: :billing, entity_from_assigns: :project_id, entity_type: :project
 
         def handle_event("delete", _params, socket) do
           # Only reached if authorized
@@ -48,9 +52,17 @@ defmodule Edict.Enforcement.Authorize do
   > authorize protected operations: keep protected work in the LiveView's
   > `handle_event/3`, which always runs after every hook.
 
-  `:permission`, `:entity_from_assigns` and `:entity_type` are required; a missing
-  one fails compilation, and so does declaring an event twice or naming it
-  with anything but a string. Strong permissions
+  `:permission`, `:entity_from_assigns` and `:entity_type` are required in the
+  keyword form; a missing one fails compilation, and so does declaring an
+  event twice or naming it with anything but a string. With `edict_entity/2`
+  declared, `authorize/2` also accepts sugar that expands to exactly the same
+  runtime declarations:
+
+      edict_entity :project, from: :project_id  # once per view
+      authorize "delete", :delete               # permission atom: type and assign come from edict_entity
+      authorize ["save", "publish"], :write     # a list declares one guard per event, sharing the options
+
+  Both sugar forms combine freely with the keyword form. Strong permissions
   (see `Edict.Config.strong_permissions/1`) are always checked against the
   database; a `:strong` option fails compilation, since only `Edict.can?` may
   opt out. A permission the entity type does not define raises `ArgumentError`
@@ -71,16 +83,67 @@ defmodule Edict.Enforcement.Authorize do
       end
 
       Module.register_attribute(__MODULE__, :edict_authorizations, accumulate: true)
+      Module.register_attribute(__MODULE__, :edict_entity, accumulate: false)
+      Module.put_attribute(__MODULE__, :edict_entity, nil)
       @before_compile Edict.Enforcement.Authorize
-      import Edict.Enforcement.Authorize, only: [authorize: 2]
+      import Edict.Enforcement.Authorize, only: [authorize: 2, edict_entity: 1, edict_entity: 2]
 
       require Phoenix.LiveView
       Phoenix.LiveView.on_mount({Edict.Enforcement.Authorize, __MODULE__})
     end
   end
 
-  @doc "Declares that `event_name` requires `permission` on the entity in assigns."
+  @doc """
+  Declares the module's entity type and the assign holding its ID, once per
+  view. The `authorize/2` sugar forms read both from it.
+  """
+  defmacro edict_entity(entity_type, opts \\ []) do
+    from = opts[:from]
+
+    # nil is an atom, so it must be excluded explicitly.
+    unless is_atom(from) and not is_nil(from) do
+      raise CompileError,
+        description: "edict_entity requires the :from option: the assign holding the entity ID"
+    end
+
+    quote do
+      if Module.get_attribute(__MODULE__, :edict_entity) do
+        raise CompileError, description: "edict_entity can only be declared once"
+      end
+
+      Module.put_attribute(__MODULE__, :edict_entity, {unquote(entity_type), unquote(from)})
+    end
+  end
+
+  @doc """
+  Declares that `event_name` requires `permission` on the entity in assigns.
+
+  The first argument accepts a single event name or a list — a list declares
+  one guard per event, sharing the options. The second argument accepts the
+  full keyword form, or a permission atom when `edict_entity/2` is declared.
+  """
+  defmacro authorize(event_names, permission) when is_list(event_names) and is_atom(permission) do
+    quote do
+      (unquote_splicing(Enum.map(event_names, &authorization_quote(&1, permission))))
+    end
+  end
+
+  defmacro authorize(event_names, opts) when is_list(event_names) do
+    quote do
+      (unquote_splicing(Enum.map(event_names, &keyword_authorization(&1, opts))))
+    end
+  end
+
+  defmacro authorize(event_name, permission) when is_atom(permission) do
+    authorization_quote(event_name, permission)
+  end
+
   defmacro authorize(event_name, opts) do
+    keyword_authorization(event_name, opts)
+  end
+
+  # The keyword form: every option is stated on the declaration itself.
+  defp keyword_authorization(event_name, opts) do
     Helpers.require_options!(opts, @required_options, "authorize")
     Helpers.reject_strong!(opts)
 
@@ -91,6 +154,28 @@ defmodule Edict.Enforcement.Authorize do
       Module.put_attribute(__MODULE__, :edict_authorizations, {
         unquote(event_name),
         {unquote(permission), unquote(assigns_key), unquote(entity_type)}
+      })
+    end
+  end
+
+  # The sugar form: the entity type and assign come from edict_entity, read
+  # where the declaration sits so a missing default fails compilation there.
+  defp authorization_quote(event_name, permission) do
+    quote do
+      edict = Module.get_attribute(__MODULE__, :edict_entity)
+
+      unless edict do
+        raise CompileError,
+          description:
+            "authorize with a permission atom requires edict_entity: " <>
+              "declare the entity type and its assign once per view"
+      end
+
+      {entity_type, from} = edict
+
+      Module.put_attribute(__MODULE__, :edict_authorizations, {
+        unquote(event_name),
+        {unquote(permission), from, entity_type}
       })
     end
   end

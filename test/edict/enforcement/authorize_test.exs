@@ -173,6 +173,81 @@ defmodule Edict.Enforcement.AuthorizeTest do
     end
   end
 
+  describe "edict_entity and authorize overloads" do
+    test "authorize with a permission atom uses the edict_entity default" do
+      module =
+        compile_authorize_module("""
+        edict_entity :project, from: :project_id
+        authorize "delete", :delete
+        """)
+
+      assert module.__edict_authorizations__() == %{"delete" => {:delete, :project_id, :project}}
+    end
+
+    test "a list of events shares one declaration" do
+      module =
+        compile_authorize_module("""
+        edict_entity :project, from: :project_id
+        authorize ["save", "publish"], :write
+        """)
+
+      assert module.__edict_authorizations__() == %{
+               "save" => {:write, :project_id, :project},
+               "publish" => {:write, :project_id, :project}
+             }
+    end
+
+    test "the keyword form still works and mixes with the sugar forms" do
+      module =
+        compile_authorize_module("""
+        edict_entity :project, from: :project_id
+        authorize "delete", :delete
+        authorize ["save", "publish"], :write
+        authorize "export", permission: :billing, entity_from_assigns: :project_id, entity_type: :project
+        """)
+
+      assert module.__edict_authorizations__() == %{
+               "delete" => {:delete, :project_id, :project},
+               "save" => {:write, :project_id, :project},
+               "publish" => {:write, :project_id, :project},
+               "export" => {:billing, :project_id, :project}
+             }
+    end
+
+    test "a list of events with keyword options shares them" do
+      module =
+        compile_authorize_module("""
+        authorize ["one", "two"], permission: :write, entity_from_assigns: :project_id, entity_type: :project
+        """)
+
+      assert module.__edict_authorizations__() == %{
+               "one" => {:write, :project_id, :project},
+               "two" => {:write, :project_id, :project}
+             }
+    end
+
+    test "authorize with a permission atom but no edict_entity fails to compile" do
+      assert_raise CompileError, ~r/edict_entity/, fn ->
+        compile_authorize_module(~s|authorize "delete", :delete|)
+      end
+    end
+
+    test "a second edict_entity fails to compile" do
+      assert_raise CompileError, ~r/once/, fn ->
+        compile_authorize_module("""
+        edict_entity :project, from: :project_id
+        edict_entity :team, from: :team_id
+        """)
+      end
+    end
+
+    test "edict_entity without :from fails to compile" do
+      assert_raise CompileError, ~r/:from/, fn ->
+        compile_authorize_module(~s|edict_entity :project|)
+      end
+    end
+  end
+
   defp build_socket(assigns) do
     %Phoenix.LiveView.Socket{
       assigns: Map.merge(%{__changed__: %{}}, assigns),
@@ -197,5 +272,10 @@ defmodule Edict.Enforcement.AuthorizeTest do
       def render(assigns), do: ~H""
     end
     """)
+  end
+
+  defp compile_authorize_module(declaration) do
+    [{module, _binary}] = compile_authorize(declaration)
+    module
   end
 end
