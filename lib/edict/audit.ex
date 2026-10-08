@@ -61,6 +61,9 @@ defmodule Edict.Audit do
   filter and the scan.
   """
   @spec find_sources(String.t()) :: [{Path.t(), String.t()}]
+  # The glob is the mix task's argument, given by a developer or CI, never
+  # request input: the paths it expands to are not attacker-controlled.
+  # sobelow_skip ["Traversal.FileModule"]
   def find_sources(glob \\ @default_glob) do
     glob
     |> Path.wildcard()
