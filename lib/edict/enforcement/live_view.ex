@@ -4,7 +4,7 @@ defmodule Edict.Enforcement.LiveView do
 
   Loads the authorization document from the cache (rebuilding it if stale or
   missing) and checks the permission. On a connected socket it first subscribes
-  to the user's version bumps, so none is missed while mounting. Strong actions are checked against
+  to the user's version bumps, so none is missed while mounting. Strong permissions are checked against
   the database. On success the document is assigned as `current_user_roles`,
   which `Edict.Enforcement.Authorize` guards and `Edict.can?` read.
 
@@ -33,7 +33,7 @@ defmodule Edict.Enforcement.LiveView do
   A permission the config does not define for the entity type raises `ArgumentError`
   on mount, instead of silently denying.
 
-  Strong actions (see `Edict.Config.strong_actions/1`) are always checked against
+  Strong permissions (see `Edict.Config.strong_permissions/1`) are always checked against
   the database. The `:strong` option is rejected: only `Edict.can?` may opt out.
 
   Missing `:permission`, `:entity_type`, or both `:param` and `:entity_from` raise
@@ -48,8 +48,8 @@ defmodule Edict.Enforcement.LiveView do
   the view's own `handle_info/2`.
 
   The re-check runs only when this node receives the version bump. A node that
-  missed it keeps the LiveView open, even for a strong action, so guard every
-  event that performs a strong action with `Edict.Enforcement.Authorize`.
+  missed it keeps the LiveView open, even for a strong permission, so guard every
+  event that performs a strong permission with `Edict.Enforcement.Authorize`.
   """
 
   import Phoenix.Component, only: [assign: 3]

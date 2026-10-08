@@ -4,8 +4,8 @@ defmodule Edict do
 
   Edict maintains a per-user authorization document in an ETS-backed cache.
   Permission checks read the cached document without a database query; a stale
-  or missing document is rebuilt from the database, and strong actions (see
-  `Edict.Config.strong_actions/1`) are checked against it unless a display
+  or missing document is rebuilt from the database, and strong permissions (see
+  `Edict.Config.strong_permissions/1`) are checked against it unless a display
   check opts out. Documents are automatically invalidated when roles change, with
   cross-node support via Phoenix.PubSub.
 
@@ -196,7 +196,7 @@ defmodule Edict do
   @doc """
   Check permission using an entity struct (via Edict.Entity protocol).
 
-  Strong actions are checked against the database. Pass `strong: false` to
+  Strong permissions are checked against the database. Pass `strong: false` to
   check the document instead, for example to show or hide a button.
   """
   @spec can?(Document.t(), atom(), struct()) :: boolean()
@@ -235,7 +235,7 @@ defmodule Edict do
   @doc """
   Check permission using entity_type and entity_id directly, with options.
 
-  The only option is `strong: false`, which checks a strong action against the
+  The only option is `strong: false`, which checks a strong permission against the
   document instead of the database; other options are ignored, and any other
   `:strong` value raises
   `ArgumentError`. Unlike `Edict.Plug`, `Edict.LiveView` and `authorize`,
@@ -278,7 +278,7 @@ defmodule Edict do
       {:valid_role?, 1},
       {:valid_permission?, 2},
       {:permissions_for, 2},
-      {:strong_action?, 1},
+      {:strong_permission?, 2},
       {:user_id_from_assigns, 1},
       {:on_unauthorized, 0}
     ]
