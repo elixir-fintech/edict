@@ -26,3 +26,4 @@ erl_crash.dump
 
 # opendoc
 opencode.json
+.mcp.json
