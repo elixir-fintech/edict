@@ -32,11 +32,8 @@ defmodule Edict.Features.StepDefinitions.RoleSenioritySteps do
   end
 
   step "the role {string} extends {string}", %{args: [role, parent]} = context do
-    for entity_type <- @config.entity_types(),
-        @config.permissions_for(parent, entity_type) != [] do
-      assert inherits?(role, parent, entity_type)
-    end
-
+    # The scenarios' entity: one linear check, no filtering to pass trivially.
+    assert inherits?(role, parent, "project")
     context
   end
 
@@ -109,9 +106,18 @@ defmodule Edict.Features.StepDefinitions.RoleSenioritySteps do
 
   # A role extending `parent` inherits everything it declares, so the parent's
   # effective permissions are a subset of the role's on every entity type.
+  # The entity type arrives from the feature file as a string and must be an
+  # atom, or permissions_for/2 falls through to [] and the check passes
+  # vacuously.
   defp inherits?(role, parent, entity_type) do
-    parent_permissions = @config.permissions_for(String.to_existing_atom(parent), entity_type)
-    role_permissions = @config.permissions_for(String.to_existing_atom(role), entity_type)
+    parent_permissions =
+      @config.permissions_for(
+        String.to_existing_atom(parent),
+        String.to_existing_atom(entity_type)
+      )
+
+    role_permissions =
+      @config.permissions_for(String.to_existing_atom(role), String.to_existing_atom(entity_type))
 
     parent_permissions -- role_permissions == []
   end
