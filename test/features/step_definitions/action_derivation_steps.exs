@@ -122,4 +122,22 @@ defmodule Edict.Features.StepDefinitions.ActionDerivationSteps do
     assert error.description =~ ":read"
     context
   end
+
+  # The scenario hook seeds config_module per scenario; this Given removes
+  # it for the compilation below, and the next scenario's hook restores it.
+  step "the config module is not available at compile time", context do
+    Application.delete_env(:edict, :config_module)
+    context
+  end
+
+  step "compilation fails mentioning the unavailable config module", context do
+    {:error, %CompileError{} = error} = context.compilation
+    description = error.description
+
+    assert description =~ "config_module"
+    assert description =~ ":show"
+    assert description =~ ":write"
+    assert description =~ "permission:"
+    context
+  end
 end

@@ -56,4 +56,32 @@ defmodule Edict.SentinelTest do
     assert Plug.Conn.get_resp_header(conn, "x-leak") == []
     assert conn.resp_cookies == %{}
   end
+
+  test "a denial drops the denied handler's session changes" do
+    # Plug.Session registers its cookie-writing before_send when the session
+    # is fetched in the pipeline — before the sentinel. Reverse callback
+    # order means it runs after the sentinel's rewrite, so the session must
+    # be marked ignored for its changes to stay out of the cookie.
+    session_opts =
+      Plug.Session.init(
+        store: :cookie,
+        key: "edict_test_session",
+        encryption_salt: "encrypted at rest",
+        signing_salt: "signed",
+        log: false
+      )
+
+    conn =
+      Plug.Test.conn(:get, "/legacy")
+      |> Plug.Session.call(session_opts)
+      |> Plug.Conn.fetch_session()
+      |> Plug.Conn.assign(:edict_config, @edict_config)
+      |> Edict.Sentinel.call(Edict.Sentinel.init([]))
+      # The denied handler tries to write to the session after the sentinel.
+      |> Plug.Conn.put_session(:role, "admin")
+      |> Plug.Conn.send_resp(200, "ok")
+
+    assert conn.status == 403
+    assert Plug.Conn.get_resp_header(conn, "set-cookie") == []
+  end
 end

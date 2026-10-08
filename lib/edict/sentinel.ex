@@ -60,6 +60,11 @@ defmodule Edict.Sentinel do
   # the pipeline's own headers and cookies are restored from the baseline.
   defp verify(conn, {headers, cookies}) do
     conn
+    # A fetched session registered its cookie-writing callback before the
+    # sentinel; callbacks run in reverse order, so it fires after this one.
+    # Marking the session ignored keeps the denied handler's put_session
+    # changes out of the response cookie.
+    |> Plug.Conn.put_private(:plug_session_info, :ignore)
     |> reset_response(headers, cookies)
     |> Plug.Conn.put_resp_content_type("text/plain")
     |> Plug.Conn.resp(403, "Forbidden")
