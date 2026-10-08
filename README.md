@@ -117,8 +117,9 @@ defmodule MyApp.AuthConfig do
   end
 
   role :editor do
-    on :organization, permissions: [:read, :write]
-    on :project, permissions: [:read, :write]
+    extends :viewer
+    on :organization, permissions: [:write]
+    on :project, permissions: [:write]
   end
 
   role :viewer do
@@ -133,6 +134,34 @@ end
 ```
 
 The `struct:` option auto-generates `Edict.Entity` protocol implementations at compile time. Omit it to implement the protocol manually for custom ID extraction.
+
+### Role seniority
+
+`extends` makes a role inherit every permission its parent declares, across
+all entity types; multiple parents union. The transitive union is resolved
+when the config compiles, so nothing changes at runtime: assigning a role
+still stores a single row, and `permissions_for/2` reports effective
+permissions. An unknown parent and an inheritance cycle fail compilation.
+
+In the config above, `:editor` extends `:viewer` and therefore grants `:read`
+and `:write` — declaring `:read` twice would be the drift `extends` prevents.
+
+### Permission aliases
+
+`permission_aliases` maps Phoenix action names to permissions. The shipped
+defaults apply when you declare nothing:
+
+```elixir
+permission_aliases [
+  index: :read, show: :read,
+  new: :write, edit: :write, create: :write, update: :write,
+  delete: :delete
+]
+```
+
+An app's entries merge over the defaults entry by entry. Aliases are a
+compile-time naming convention used by route derivation; the resolved
+permission is validated per entity type where it is used.
 
 ## Managing roles
 
@@ -255,8 +284,12 @@ defmodule MyAppWeb.ProjectLive.Show do
     entity_type: :project,
     param: "project_id"}
 
-  authorize "delete", permission: :delete, entity_from_assigns: :project_id, entity_type: :project
-  authorize "update", permission: :write, entity_from_assigns: :project_id, entity_type: :project
+  # The module default: entity type and the assign holding its ID, once per view
+  edict_entity :project, from: :project_id
+
+  authorize "delete", :delete                  # permission atom: rest comes from edict_entity
+  authorize ["save", "publish"], :write         # a list declares one guard per event
+  authorize "export", permission: :billing, entity_from_assigns: :project_id, entity_type: :project
 
   def mount(%{"project_id" => project_id}, _session, socket) do
     # The guards read the entity ID from this assign
@@ -274,7 +307,12 @@ The guards need `on_mount {Edict.LiveView, ...}`, which assigns `current_user_ro
 `on_unauthorized` when the assigned entity ID is missing or empty. A missing entity assign on its
 own also means denial.
 
-`permission:`, `entity_from_assigns:` and `entity_type:` are all required; leaving one out, declaring an event twice, or naming it with anything but a string fails compilation, and so does `use Edict.Enforcement.Authorize` before `use Phoenix.LiveView` or in a LiveComponent. A denied event whose `on_unauthorized` does not redirect is dropped. `use Edict.Enforcement.Authorize` must come after `use Phoenix.LiveView` (here via `use MyAppWeb, :live_view`): it attaches a `handle_event` hook that checks each declared event before your handler runs.
+With `edict_entity/2` declared, `authorize/2` accepts a permission atom, and
+its first argument accepts a single event name or a list — every sugar form
+expands to exactly the same runtime declaration as the keyword form, and the
+forms mix freely.
+
+`permission:`, `entity_from_assigns:` and `entity_type:` are all required in the keyword form; leaving one out, declaring an event twice, or naming it with anything but a string fails compilation, and so does `use Edict.Enforcement.Authorize` before `use Phoenix.LiveView` or in a LiveComponent. A denied event whose `on_unauthorized` does not redirect is dropped. `use Edict.Enforcement.Authorize` must come after `use Phoenix.LiveView` (here via `use MyAppWeb, :live_view`): it attaches a `handle_event` hook that checks each declared event before your handler runs.
 
 **Earlier hooks run first:** `handle_event` hooks attached before Edict's, for example by `live_session` `on_mount` callbacks, see declared events before they are authorized. Such hooks must never perform or authorize protected operations; keep protected work in `handle_event/3`, which always runs after every hook.
 
