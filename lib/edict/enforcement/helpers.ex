@@ -4,7 +4,7 @@ defmodule Edict.Enforcement.Helpers do
 
   `can?/4` and `can?/5` read only the given document: no cache or DB hit.
   `authorized?/6` is what enforcement and `Edict.can?` use. It checks strong
-  actions against the DB and everything else against the document. Permission resolution happens
+  permissions against the DB and everything else against the document. Permission resolution happens
   at check time using the config module.
   """
 
@@ -78,15 +78,15 @@ defmodule Edict.Enforcement.Helpers do
   end
 
   @doc """
-  Checks a permission, reading the DB for strong actions.
+  Checks a permission, reading the DB for strong permissions.
 
-  A strong action (`strong_action?/1` on the config module) is checked
-  against the user's current rows for the entity, never against the cache,
-  unless `opts` contains `strong: false`. Every other permission is checked
-  against `document`. Only a non-empty string or an integer is an entity ID;
-  anything else is denied without a DB query. A `nil` document is accepted only
-  for such an invalid ID; with a valid one it raises `ArgumentError`, so a
-  missing `current_user_roles` never grants.
+  A strong permission (`strong_permission?/2` on the config module, scoped per
+  entity type) is checked against the user's current rows for the entity,
+  never against the cache, unless `opts` contains `strong: false`. Every other
+  permission is checked against `document`. Only a non-empty string or an
+  integer is an entity ID; anything else is denied without a DB query. A `nil`
+  document is accepted only for such an invalid ID; with a valid one it raises
+  `ArgumentError`, so a missing `current_user_roles` never grants.
   """
   @spec authorized?(map(), Document.t() | nil, atom(), atom(), term(), Enumerable.t()) ::
           boolean()
@@ -103,7 +103,7 @@ defmodule Edict.Enforcement.Helpers do
     config_module = edict_config.config_module
 
     document =
-      if strong_check?(config_module, permission, entity_id, opts),
+      if strong_check?(config_module, permission, entity_type, entity_id, opts),
         do: fresh_document(edict_config, document.user_id, entity_type, entity_id),
         else: document
 
@@ -197,26 +197,26 @@ defmodule Edict.Enforcement.Helpers do
   Raises `ArgumentError` if `opts` contains `:strong`.
 
   Enforcement (Plug, LiveView mount, `authorize` events) always follows
-  `strong_actions`; only `Edict.can?` may opt out, for display checks.
+  `strong_permissions`; only `Edict.can?` may opt out, for display checks.
   """
   @spec reject_strong!(Enumerable.t()) :: :ok
   def reject_strong!(opts) do
     if has_option?(opts, :strong) do
       raise ArgumentError,
             "the :strong option is only accepted by Edict.can?; " <>
-              "enforcement always follows strong_actions"
+              "enforcement always follows strong_permissions"
     end
 
     :ok
   end
 
   # An invalid entity ID is denied by can?/5, so it never needs a DB read.
-  defp strong_check?(_config_module, _action, entity_id, _opts)
+  defp strong_check?(_config_module, _permission, _entity_type, entity_id, _opts)
        when not is_entity_id(entity_id),
        do: false
 
-  defp strong_check?(config_module, action, _entity_id, opts),
-    do: config_module.strong_action?(action) and opts != [strong: false]
+  defp strong_check?(config_module, permission, entity_type, _entity_id, opts),
+    do: config_module.strong_permission?(permission, entity_type) and opts != [strong: false]
 
   # Only this entity's rows, straight from the DB: a strong check never trusts
   # the cache and never writes to it.
@@ -235,7 +235,7 @@ defmodule Edict.Enforcement.Helpers do
   @doc """
   Check permission using an entity struct (via Edict.Entity protocol).
 
-  Reads only `document` and ignores strong actions; enforcement uses
+  Reads only `document` and ignores strong permissions; enforcement uses
   `authorized?/6`.
   """
   @spec can?(Document.t(), atom(), struct(), module()) :: boolean()
@@ -248,7 +248,7 @@ defmodule Edict.Enforcement.Helpers do
   @doc """
   Check permission using entity_type and entity_id directly.
 
-  Reads only `document` and ignores strong actions; enforcement uses
+  Reads only `document` and ignores strong permissions; enforcement uses
   `authorized?/6`. Only a non-empty string or an integer is an entity ID:
   anything else, such as `nil`, `""` or an array request param, is denied.
   """

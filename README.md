@@ -4,7 +4,7 @@ Cached authorization for Phoenix applications.
 
 Edict maintains a per-user authorization document in an ETS-backed cache (Cachex).
 Instead of loading authorization context on every request, permission checks read
-from the cached document without a database query (strong actions excepted). Documents are automatically
+from the cached document without a database query (strong permissions excepted). Documents are automatically
 invalidated when roles change, with cross-node support via Phoenix.PubSub.
 
 ## Core concepts
@@ -296,18 +296,21 @@ them directly (`can?(doc, permission, :project, "7")`), or a struct plus options
 ID and options. Unlike the Plug and LiveView, `can?` does not validate the permission: a permission the
 entity type does not define returns `false`.
 
-## Strong actions
+## Strong permissions
 
 Cached checks can be stale on a node that missed a role change
-(see [Consistency guarantees](#consistency-guarantees)). For high-risk actions, declare
-them strong: every check of a strong action reads the user's current roles on that
-entity from the DB, never from the cache.
+(see [Consistency guarantees](#consistency-guarantees)). For high-risk permissions, declare
+them strong: every check of a strong permission reads the user's current roles on that
+entity from the DB, never from the cache. Strength is scoped per entity type — the same
+permission name can be strong on one entity type and served from the cache on another.
 
 ```elixir
 defmodule MyApp.AuthConfig do
   use Edict.Config
 
-  strong_actions [:approve_transfer, :delete]
+  strong_permissions do
+    on :account, permissions: [:approve_transfer]
+  end
 
   entity_types do
     entity :account, struct: MyApp.Account
@@ -318,12 +321,14 @@ defmodule MyApp.AuthConfig do
     on :account, permissions: [:read, :approve_transfer]
   end
 
-  # ... the roles granting :delete
+  # ... the roles granting every other strong permission
 end
 ```
 
-`strong_actions` takes a literal list of atoms, may appear once, and every listed permission must be
-granted by some role, otherwise the config fails to compile.
+`strong_permissions` is a block of `on/2` declarations — an entity type and its
+`permissions:` list of atoms. It may appear once, the entity type must be declared,
+and every listed permission must be granted by some role on that entity type,
+otherwise the config fails to compile.
 
 This applies to `Edict.Plug`, `Edict.LiveView` (on mount), `authorize` event guards, and
 `Edict.can?`. Each strong check costs one indexed query. If the DB is unavailable, the check
@@ -337,7 +342,7 @@ same DB transaction as the write.
 A strong check protects the moment it runs: a request, a mount, or an event. A LiveView that
 is already open re-checks its mount permission only when the node receives the role change,
 and a node that missed it keeps the LiveView running. **Guard every event that performs a
-strong action with `authorize`**, not only the mount.
+strong permission with `authorize`**, not only the mount.
 
 `Edict.can?` accepts `strong: false` for display checks, where a stale answer is acceptable:
 
@@ -396,14 +401,14 @@ eventually consistent:
   up to 10 minutes.
 - **An open LiveView on such a node can stay stale for as long as it is open**, not just for
   the TTL: its roles live in socket assigns, and they are refreshed only by a role change the
-  node does receive. That covers its mount permission (even for a strong action, which is
+  node does receive. That covers its mount permission (even for a strong permission, which is
   re-checked only on a received role change), non-strong `authorize` events and non-strong
   `Edict.can?` calls in its templates. Strong `authorize` events and strong `can?` calls still
   read the DB.
 - **A check already in progress** when the role changes may still use the previous document.
   Requests that passed the Plug before a revocation run to completion.
 - **Strong checks read the DB every time they run** (see
-  [Strong actions](#strong-actions)). An open LiveView is not re-checked until the node receives
+  [Strong permissions](#strong-permissions)). An open LiveView is not re-checked until the node receives
   the role change, so guard strong events with `authorize`.
 
 A shorter TTL narrows the cache window at the cost of more DB reads (it does not refresh open

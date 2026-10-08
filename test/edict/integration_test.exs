@@ -267,7 +267,7 @@ defmodule Edict.IntegrationTest do
     end
   end
 
-  describe "strong actions in Plug and LiveView" do
+  describe "strong permissions in Plug and LiveView" do
     setup %{config: config} do
       insert_role!("alice", "treasurer", "account", "7")
       strong_config = Map.put(config, :config_module, Edict.Test.StrongConfig)
@@ -281,7 +281,7 @@ defmodule Edict.IntegrationTest do
       %{strong_config: strong_config}
     end
 
-    test "Plug denies a strong action revoked in the DB", %{strong_config: strong_config} do
+    test "Plug denies a strong permission revoked in the DB", %{strong_config: strong_config} do
       opts =
         EdictPlug.init(
           edict_config: strong_config,
@@ -301,7 +301,7 @@ defmodule Edict.IntegrationTest do
       assert result.status == 403
     end
 
-    test "LiveView mount halts on a strong action revoked in the DB", %{
+    test "LiveView mount halts on a strong permission revoked in the DB", %{
       strong_config: strong_config
     } do
       socket = build_socket(%{current_user: %{id: "alice"}})
@@ -318,7 +318,7 @@ defmodule Edict.IntegrationTest do
       assert result_socket.redirected
     end
 
-    test "authorize event denies a strong action revoked in the DB", %{
+    test "authorize event denies a strong permission revoked in the DB", %{
       strong_config: strong_config
     } do
       # Still grants treasurer: the setup revoked without notifying the cache

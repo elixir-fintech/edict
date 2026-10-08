@@ -50,8 +50,8 @@ defmodule Edict.Enforcement.Authorize do
 
   `:permission`, `:entity_from_assigns` and `:entity_type` are required; a missing
   one fails compilation, and so does declaring an event twice or naming it
-  with anything but a string. Strong actions
-  (see `Edict.Config.strong_actions/1`) are always checked against the
+  with anything but a string. Strong permissions
+  (see `Edict.Config.strong_permissions/1`) are always checked against the
   database; a `:strong` option fails compilation, since only `Edict.can?` may
   opt out. A permission the entity type does not define raises `ArgumentError`
   when the event arrives.

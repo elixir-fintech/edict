@@ -4,7 +4,7 @@ defmodule Edict.Enforcement.Plug do
 
   Extracts the user ID from assigns, loads the authorization document from
   cache (rebuilding if stale or missing), and checks the requested permission.
-  Strong actions are checked against the database.
+  Strong permissions are checked against the database.
 
   ## Options
 
@@ -20,7 +20,7 @@ defmodule Edict.Enforcement.Plug do
 
   A missing param yields no entity ID, so the check fails and the request is unauthorized.
 
-  Strong actions (see `Edict.Config.strong_actions/1`) are always checked against
+  Strong permissions (see `Edict.Config.strong_permissions/1`) are always checked against
   the database. The `:strong` option is rejected: only `Edict.can?` may opt out.
 
   Missing `:permission`, `:entity_type`, or both `:param` and `:entity_from` raise

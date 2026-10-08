@@ -9,16 +9,20 @@ defmodule Edict.Config do
 
         user_from_assigns fn assigns -> assigns.current_user.id end
 
-        strong_actions [:delete]
+        strong_permissions do
+          on :account, permissions: [:delete]
+        end
 
         entity_types do
           entity :organization, struct: MyApp.Organization
           entity :project, struct: MyApp.Project
+          entity :account, struct: MyApp.Account
         end
 
         role :admin do
           on :organization, permissions: [:read, :write, :delete]
           on :project, permissions: [:read, :write, :delete]
+          on :account, permissions: [:delete]
         end
       end
 
@@ -30,7 +34,7 @@ defmodule Edict.Config do
   - `valid_role?/1` — whether a role is defined
   - `valid_entity_type?/1` — whether an entity type is defined
   - `valid_permission?/2` — whether a permission is valid for an entity type
-  - `strong_action?/1` — whether enforcement always checks an action against the database
+  - `strong_permission?/2` — whether enforcement always checks a (permission, entity type) pair against the database
   - `entity_types/0` — list of valid entity types
   - `user_id_from_assigns/1` — extract user ID from conn/socket assigns
   - `on_unauthorized/0` — the denial handler for Plug and LiveView
@@ -43,13 +47,18 @@ defmodule Edict.Config do
       Module.register_attribute(__MODULE__, :edict_entities, accumulate: true)
       Module.register_attribute(__MODULE__, :edict_roles, accumulate: true)
       Module.register_attribute(__MODULE__, :edict_role_permissions, accumulate: true)
+      Module.register_attribute(__MODULE__, :edict_strong_pairs, accumulate: true)
       Module.register_attribute(__MODULE__, :edict_user_from_assigns, accumulate: false)
       Module.register_attribute(__MODULE__, :edict_on_unauthorized, accumulate: false)
-      Module.register_attribute(__MODULE__, :edict_strong_actions, accumulate: false)
+      Module.register_attribute(__MODULE__, :edict_current_role, accumulate: false)
+      Module.register_attribute(__MODULE__, :edict_strong_block, accumulate: false)
+      Module.register_attribute(__MODULE__, :edict_strong_declared, accumulate: false)
 
       Module.put_attribute(__MODULE__, :edict_user_from_assigns, nil)
       Module.put_attribute(__MODULE__, :edict_on_unauthorized, nil)
-      Module.put_attribute(__MODULE__, :edict_strong_actions, nil)
+      Module.put_attribute(__MODULE__, :edict_current_role, nil)
+      Module.put_attribute(__MODULE__, :edict_strong_block, false)
+      Module.put_attribute(__MODULE__, :edict_strong_declared, false)
 
       import Edict.Config,
         only: [
@@ -60,7 +69,7 @@ defmodule Edict.Config do
           on: 2,
           user_from_assigns: 1,
           on_unauthorized: 1,
-          strong_actions: 1
+          strong_permissions: 1
         ]
     end
   end
@@ -99,29 +108,29 @@ defmodule Edict.Config do
   end
 
   @doc """
-  Declares actions that are always checked against the database.
+  Declares permissions that are always checked against the database.
 
   `Edict.Plug`, `Edict.LiveView` and `authorize` guards always check them
   against the database. Only `Edict.can?` may opt out with `strong: false`,
   for display checks. (`Edict.Enforcement.Helpers.can?/5` reads only a document
-  it is given and ignores strong actions; enforcement does not use it.)
+  it is given and ignores strong permissions; enforcement does not use it.)
 
-  Takes a literal list of atoms and may appear at most once. Every listed
-  action must be granted by some role.
+  Strength is a property of the (entity type, permission) pair: the same
+  permission name may be strong on one entity type and served from the cache
+  on another. The block takes one `on/2` per entity type, each with a literal
+  list of permission atoms, and may appear at most once. Every listed
+  permission must be granted by some role on that entity type.
   """
-  defmacro strong_actions(actions) do
-    unless is_list(actions) and Enum.all?(actions, &is_atom/1) do
-      raise CompileError,
-        description:
-          "strong_actions expects a literal list of atoms, got: #{Macro.to_string(actions)}"
-    end
-
+  defmacro strong_permissions(do: block) do
     quote do
-      if Module.get_attribute(__MODULE__, :edict_strong_actions) do
-        raise CompileError, description: "strong_actions can only be declared once"
+      if Module.get_attribute(__MODULE__, :edict_strong_declared) do
+        raise CompileError, description: "strong_permissions can only be declared once"
       end
 
-      Module.put_attribute(__MODULE__, :edict_strong_actions, unquote(actions))
+      Module.put_attribute(__MODULE__, :edict_strong_declared, true)
+      Module.put_attribute(__MODULE__, :edict_strong_block, true)
+      unquote(block)
+      Module.put_attribute(__MODULE__, :edict_strong_block, false)
     end
   end
 
@@ -161,25 +170,43 @@ defmodule Edict.Config do
 
       @edict_current_role unquote(name)
       unquote(block)
-      Module.delete_attribute(__MODULE__, :edict_current_role)
+      Module.put_attribute(__MODULE__, :edict_current_role, nil)
     end
   end
 
   @doc """
   Inside `role/2`: grants `permissions:` on an entity type declared in `entity_types/1`.
+  Inside `strong_permissions/1`: marks the listed permissions strong on the entity type.
 
   Use one `on` per entity type in a role: a second one for the same entity type
-  is ignored (its generated clause never matches).
+  is ignored (its generated clause never matches). Anywhere else it fails
+  compilation.
   """
   defmacro on(entity_type, opts) do
     permissions = opts[:permissions] || []
 
     quote do
-      Module.put_attribute(__MODULE__, :edict_role_permissions, {
-        @edict_current_role,
-        unquote(entity_type),
-        unquote(permissions)
-      })
+      current_role = Module.get_attribute(__MODULE__, :edict_current_role)
+      strong_block? = Module.get_attribute(__MODULE__, :edict_strong_block)
+
+      cond do
+        current_role ->
+          Module.put_attribute(__MODULE__, :edict_role_permissions, {
+            current_role,
+            unquote(entity_type),
+            unquote(permissions)
+          })
+
+        strong_block? ->
+          Module.put_attribute(__MODULE__, :edict_strong_pairs, {
+            unquote(entity_type),
+            unquote(permissions)
+          })
+
+        true ->
+          raise CompileError,
+            description: "on/2 is only valid inside role/2 or strong_permissions/1"
+      end
     end
   end
 
@@ -187,9 +214,7 @@ defmodule Edict.Config do
     entities = Module.get_attribute(env.module, :edict_entities)
     roles = Module.get_attribute(env.module, :edict_roles)
     role_permissions = Module.get_attribute(env.module, :edict_role_permissions)
-
-    strong_actions =
-      strong_actions_or_none(Module.get_attribute(env.module, :edict_strong_actions))
+    strong_pairs = strong_pairs(Module.get_attribute(env.module, :edict_strong_pairs))
 
     user_fn = user_fn(Module.get_attribute(env.module, :edict_user_from_assigns))
     unauthorized_fn = unauthorized_fn(Module.get_attribute(env.module, :edict_on_unauthorized))
@@ -197,7 +222,7 @@ defmodule Edict.Config do
     entity_type_names = Enum.map(entities, fn {name, _, _} -> name end)
 
     validate_entity_types!(role_permissions, entity_type_names)
-    validate_strong_actions!(strong_actions, role_permissions)
+    validate_strong_pairs!(strong_pairs, role_permissions, entity_type_names)
 
     quote do
       @doc "Returns the list of valid entity types."
@@ -224,9 +249,10 @@ defmodule Edict.Config do
       @doc "Returns `true` if the permission is valid for the given entity type."
       def valid_permission?(_permission, _entity_type), do: false
 
-      @doc "Returns `true` if the action is strong: enforcement always checks it against the database."
-      @spec strong_action?(atom()) :: boolean()
-      def strong_action?(action), do: action in unquote(strong_actions)
+      @doc "Returns `true` if the permission is strong on the entity type: enforcement always checks it against the database."
+      @spec strong_permission?(atom(), atom()) :: boolean()
+      def strong_permission?(permission, entity_type),
+        do: {permission, entity_type} in unquote(Enum.uniq(strong_pairs))
 
       @doc "Extracts the user ID from conn/socket assigns."
       @spec user_id_from_assigns(map()) :: term()
@@ -287,8 +313,13 @@ defmodule Edict.Config do
     end
   end
 
-  defp strong_actions_or_none(nil), do: []
-  defp strong_actions_or_none(strong_actions), do: strong_actions
+  # The strong declarations as (permission, entity type) pairs, the shape
+  # strong_permission?/2 answers for.
+  defp strong_pairs(declarations) do
+    Enum.flat_map(declarations, fn {entity_type, permissions} ->
+      Enum.map(permissions, &{&1, entity_type})
+    end)
+  end
 
   defp user_fn(nil), do: quote(do: fn assigns -> assigns.current_user.id end)
   defp user_fn(user_from_assigns), do: user_from_assigns
@@ -311,19 +342,38 @@ defmodule Edict.Config do
 
   defp unauthorized_fn(on_unauthorized), do: on_unauthorized
 
-  defp validate_strong_actions!(strong_actions, role_permissions) do
-    granted =
-      Enum.flat_map(role_permissions, fn {_role, _entity_type, permissions} -> permissions end)
+  # Per (entity type, permission) pair: the entity type must be declared and
+  # some role must grant the permission on exactly that entity type.
+  defp validate_strong_pairs!(strong_pairs, role_permissions, entity_type_names) do
+    for {_permission, entity_type} <- strong_pairs, entity_type not in entity_type_names do
+      raise CompileError,
+        description:
+          "strong_permissions references unknown entity type #{inspect(entity_type)}. " <>
+            "Valid entity types: #{inspect(entity_type_names)}"
+    end
 
-    case Enum.reject(strong_actions, &(&1 in granted)) do
+    granted =
+      role_permissions
+      |> Enum.flat_map(fn {_role, entity_type, permissions} ->
+        Enum.map(permissions, &{&1, entity_type})
+      end)
+      |> MapSet.new()
+
+    case Enum.reject(strong_pairs, &MapSet.member?(granted, &1)) do
       [] ->
         :ok
 
       unknown ->
         raise CompileError,
           description:
-            "strong_actions lists permissions no role grants: #{inspect(unknown)}. " <>
-              "Granted permissions: #{inspect(Enum.uniq(granted))}"
+            "strong_permissions lists permissions no role grants on that entity type: " <>
+              "#{format_pairs(unknown)}. Granted: #{format_pairs(Enum.sort(MapSet.to_list(granted)))}"
     end
+  end
+
+  defp format_pairs(pairs) do
+    Enum.map_join(pairs, ", ", fn {permission, entity_type} ->
+      "#{inspect(permission)} on #{inspect(entity_type)}"
+    end)
   end
 end

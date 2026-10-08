@@ -61,17 +61,17 @@ defmodule Edict.TestHelpers do
     :ok
   end
 
-  # A strong action is decided by the DB, so report the DB's roles, not the cache's.
+  # A strong permission is decided by the DB, so report the DB's roles, not the cache's.
   defp describe_roles(doc, permission, entity_type, entity_id) do
     config = Edict.config()
 
-    if config.config_module.strong_action?(permission) do
+    if config.config_module.strong_permission?(permission, entity_type) do
       roles =
         config
         |> Edict.Core.list_entity_roles(doc.user_id, to_string(entity_type), entity_id)
         |> Enum.map(& &1.role)
 
-      "Checked against the database (strong action). Roles in the database: #{inspect(roles)}"
+      "Checked against the database (strong permission). Roles in the database: #{inspect(roles)}"
     else
       "Roles: #{inspect(Edict.Cache.Document.roles_for(doc, entity_type, entity_id))}"
     end

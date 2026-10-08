@@ -99,36 +99,78 @@ defmodule Edict.ConfigTest do
     end
   end
 
-  describe "strong_action?/1" do
-    test "is true for a listed action" do
-      assert Edict.Test.StrongConfig.strong_action?(:approve_transfer)
+  describe "strong_permission?/2" do
+    test "is true for a listed permission on its entity type" do
+      assert Edict.Test.StrongConfig.strong_permission?(:approve_transfer, :account)
     end
 
-    test "is false for an unlisted action" do
-      refute Edict.Test.StrongConfig.strong_action?(:read)
+    test "is false for the same permission on another entity type" do
+      refute Edict.Test.StrongConfig.strong_permission?(:approve_transfer, :invoice)
     end
 
-    test "is false for every action without strong_actions" do
-      refute Edict.Test.Config.strong_action?(:delete)
+    test "is false for an unlisted permission" do
+      refute Edict.Test.StrongConfig.strong_permission?(:read, :account)
+    end
+
+    test "is false for every permission without strong_permissions" do
+      refute Edict.Test.Config.strong_permission?(:delete, :project)
     end
   end
 
-  describe "strong_actions/1" do
-    test "rejects a permission no role grants" do
+  describe "strong_permissions/1" do
+    test "rejects a permission no role grants on that entity type" do
       assert_raise CompileError, ~r/:approve_transfr/, fn ->
-        compile_config("strong_actions([:approve_transfr])")
+        compile_config("""
+        strong_permissions do
+          on(:account, permissions: [:approve_transfr])
+        end
+        """)
+      end
+    end
+
+    test "rejects a permission granted only on another entity type" do
+      assert_raise CompileError, ~r/no role grants on that entity type/, fn ->
+        compile_config("""
+        strong_permissions do
+          on(:account, permissions: [:write])
+        end
+
+        entity(:team)
+
+        role :editor do
+          on(:team, permissions: [:write])
+        end
+        """)
+      end
+    end
+
+    test "rejects an unknown entity type" do
+      assert_raise CompileError, ~r/unknown entity type/, fn ->
+        compile_config("""
+        strong_permissions do
+          on(:galaxy, permissions: [:read])
+        end
+        """)
       end
     end
 
     test "rejects a second declaration" do
       assert_raise CompileError, ~r/once/, fn ->
-        compile_config("strong_actions([:read])\nstrong_actions([:read])")
+        compile_config("""
+        strong_permissions do
+          on(:account, permissions: [:read])
+        end
+
+        strong_permissions do
+          on(:account, permissions: [:read])
+        end
+        """)
       end
     end
 
-    test "rejects a value that is not a list of atoms" do
-      assert_raise CompileError, ~r/list of atoms/, fn ->
-        compile_config("strong_actions(:read)")
+    test "rejects on/2 outside a role or strong_permissions block" do
+      assert_raise CompileError, ~r/only valid inside/, fn ->
+        compile_config("on(:account, permissions: [:read])")
       end
     end
   end

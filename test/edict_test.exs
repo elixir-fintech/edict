@@ -190,7 +190,7 @@ defmodule EdictTest do
     end
   end
 
-  describe "can? with strong actions" do
+  describe "can? with strong permissions" do
     setup do
       Application.put_env(:edict, :config_module, Edict.Test.StrongConfig)
       {:ok, _} = Edict.assign_role("alice", :treasurer, :account, "7")
@@ -201,7 +201,7 @@ defmodule EdictTest do
       %{doc: doc, account: %Edict.Test.Account{id: "7"}}
     end
 
-    test "can?/3 checks a strong action against the DB", %{doc: doc, account: account} do
+    test "can?/3 checks a strong permission against the DB", %{doc: doc, account: account} do
       refute Edict.can?(doc, :approve_transfer, account)
     end
 
@@ -209,7 +209,7 @@ defmodule EdictTest do
       assert Edict.can?(doc, :approve_transfer, account, strong: false)
     end
 
-    test "can?/4 with type and ID checks a strong action against the DB", %{doc: doc} do
+    test "can?/4 with type and ID checks a strong permission against the DB", %{doc: doc} do
       refute Edict.can?(doc, :approve_transfer, :account, "7")
     end
 
