@@ -11,4 +11,11 @@ config :edict, Edict.Test.Repo,
 config :edict,
   ecto_repos: [Edict.Test.Repo]
 
+config :edict, Edict.Test.Endpoint,
+  url: [host: "localhost"],
+  secret_key_base: "edict-test-endpoint-secret-key-base-0123456789abcdef0123456789abcdef",
+  live_view: [
+    signing_salt: "edict-test-endpoint-live-view-signing-salt-0123456789"
+  ]
+
 config :logger, level: :warning

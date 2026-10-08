@@ -38,12 +38,13 @@ defmodule Edict.Features.StepDefinitions.RouteCompletenessSteps do
       end
       """)
 
-    Map.put(context, :router, router)
+    context
+    |> Map.put(:router, router)
+    |> Map.put(:request_path, "/health")
   end
 
-  step "any user requests that route", context do
-    Map.put(context, :conn, RouterFactory.request(context.router, "/health"))
-  end
+  # "any user requests that route" is shared with sentinel.feature; defined
+  # once, in sentinel_steps.exs.
 
   step "the request passes without an Edict decision", context do
     conn = context.conn

@@ -15,16 +15,18 @@ defmodule Edict.Features.StepDefinitions.ActionDerivationSteps do
 
   @config Edict.Test.Config
 
+  # Action names are converted with String.to_atom/1: the atoms live in the
+  # config module, which loads lazily on its first call, after the argument
+  # is evaluated — String.to_existing_atom/1 would depend on test order.
   step "{string} is aliased to {string} in the config",
        %{args: [action, permission]} = context do
-    assert @config.permission_alias(String.to_existing_atom(action)) ==
-             String.to_existing_atom(permission)
+    assert @config.permission_alias(String.to_atom(action)) == String.to_atom(permission)
 
     context
   end
 
   step "{string} has no alias in the config", %{args: [action]} = context do
-    assert is_nil(@config.permission_alias(String.to_existing_atom(action)))
+    assert is_nil(@config.permission_alias(String.to_atom(action)))
     context
   end
 
