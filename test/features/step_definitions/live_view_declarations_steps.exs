@@ -4,7 +4,9 @@ defmodule Edict.Features.StepDefinitions.LiveViewDeclarationSteps do
 
   Each scenario compiles a throwaway LiveView with the declared
   `edict_entity` and `authorize` sugar, then asserts the exact
-  `__edict_authorizations__/0` map the sugar expanded to.
+  `__edict_authorizations__/0` map the sugar expanded to. The audit scenario
+  instead scans a fixture source with `Edict.Audit` — the module behind
+  `mix edict.audit` — and asserts its finding and exit decision.
   """
 
   use Cucumber.StepDefinition
@@ -54,6 +56,56 @@ defmodule Edict.Features.StepDefinitions.LiveViewDeclarationSteps do
 
     assert context.module.__edict_authorizations__() == %{first => pair, second => pair}
     context
+  end
+
+  step ~r/^a LiveView with handle_event clauses for "(?<first>\w+)" and "(?<second>\w+)"$/,
+       %{args: [first, second]} = context do
+    Map.put(context, :audit_events, [first, second])
+  end
+
+  step ~r/^only "(?<event>\w+)" is declared$/, %{args: [event]} = context do
+    Map.put(context, :audit_declarations, [event])
+  end
+
+  # The scan runs against a fixture built from the scenario's events and
+  # declarations, never the repo's own sources.
+  step ~r/^"mix edict.audit" runs$/, context do
+    findings = Edict.Audit.scan_source(audit_source(context), "audit_live.ex")
+
+    context
+    |> Map.put(:audit_findings, findings)
+    |> Map.put(:audit_exit, Edict.Audit.exit_status(findings))
+  end
+
+  step ~r/^it reports "(?<event>\w+)" as undeclared and exits non-zero$/,
+       %{args: [event]} = context do
+    [finding] = context.audit_findings
+
+    assert finding.undeclared == [event]
+    assert context.audit_exit == {:shutdown, 1}
+    context
+  end
+
+  defp audit_source(context) do
+    declarations =
+      Enum.map_join(context.audit_declarations, "\n", &"authorize \"#{&1}\", :write")
+
+    handlers =
+      Enum.map_join(context.audit_events, "\n", fn event ->
+        "def handle_event(\"#{event}\", _params, socket), do: {:noreply, socket}"
+      end)
+
+    """
+    defmodule MyAppWeb.AuditLive do
+      use Phoenix.LiveView
+      use Edict.Enforcement.Authorize
+
+      edict_entity :project, from: :project_id
+      #{declarations}
+
+      #{handlers}
+    end
+    """
   end
 
   defp compile_view(context, declaration) do
