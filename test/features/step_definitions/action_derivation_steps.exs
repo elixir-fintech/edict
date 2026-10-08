@@ -38,8 +38,17 @@ defmodule Edict.Features.StepDefinitions.ActionDerivationSteps do
 
   step "a {string} route for {string} is declared inside an edict block without {string}",
        %{args: [action, entity_type, _permission_option]} = context do
-    compilation = try_compile_edict_route(entity_type, action)
+    compilation = try_compile_edict_route(entity_type, action, [], context[:block_opts] || [])
     Map.put(context, :compilation, compilation)
+  end
+
+  step "an edict block for {string} declares permission {string}",
+       %{args: [entity_type, permission]} = context do
+    permission = String.to_existing_atom(permission)
+
+    assert @config.valid_permission?(permission, String.to_existing_atom(entity_type))
+
+    Map.put(context, :block_opts, permission: permission)
   end
 
   step "a {string} route declares {string}", %{args: [action, declaration]} = context do
@@ -70,8 +79,8 @@ defmodule Edict.Features.StepDefinitions.ActionDerivationSteps do
     context
   end
 
-  defp try_compile_edict_route(entity_type, action, route_opts \\ []) do
-    {:ok, RouterFactory.compile_edict_route(entity_type, action, route_opts)}
+  defp try_compile_edict_route(entity_type, action, route_opts \\ [], block_opts \\ []) do
+    {:ok, RouterFactory.compile_edict_route(entity_type, action, route_opts, block_opts)}
   rescue
     e in CompileError -> {:error, e}
   end

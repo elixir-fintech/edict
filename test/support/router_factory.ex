@@ -61,10 +61,10 @@ defmodule Edict.Test.RouterFactory do
   `route_opts` become the route's own options, for example
   `permission: :billing`.
   """
-  @spec compile_edict_route(String.t(), String.t(), keyword()) :: module()
-  def compile_edict_route(entity_type, action, route_opts) do
+  @spec compile_edict_route(String.t(), String.t(), keyword(), keyword()) :: module()
+  def compile_edict_route(entity_type, action, route_opts \\ [], block_opts \\ []) do
     compile("""
-    edict :#{entity_type}, [param: "project_id"] do
+    edict :#{entity_type}, [param: "project_id"#{format_opts(block_opts)}] do
       get "/things/:project_id", Edict.Test.EchoPlug, :#{action}#{format_opts(route_opts)}
     end
     """)
