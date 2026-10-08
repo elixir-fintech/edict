@@ -186,7 +186,6 @@ defmodule Edict.Audit do
   defp live_view_source?(path, source) do
     String.ends_with?(path, "_live.ex") or
       String.contains?(source, "use Phoenix.LiveView") or
-      String.contains?(source, "use Edict.Enforcement.Authorize") or
-      String.ends_with?(path, "_live.ex")
+      String.contains?(source, "use Edict.Enforcement.Authorize")
   end
 end

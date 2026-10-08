@@ -42,3 +42,8 @@ Feature: Route completeness
     Given the router uses Edict.Router
     When a forward is declared outside an unguarded block
     Then compilation fails instructing to wrap it in unguarded
+
+  Scenario: A resources declaration inside an unguarded block compiles
+    Given the router uses Edict.Router
+    When a resources declaration is made inside an unguarded block
+    Then that router compiles without Edict errors
