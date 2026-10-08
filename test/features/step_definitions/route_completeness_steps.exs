@@ -99,7 +99,11 @@ defmodule Edict.Features.StepDefinitions.RouteCompletenessSteps do
     Map.put(
       context,
       :compilation,
-      RouterFactory.try_compile(~s|resources "/things", Edict.Test.EchoPlug|)
+      RouterFactory.try_compile("""
+      edict :project, [param: "project_id"] do
+        resources "/things", Edict.Test.EchoPlug
+      end
+      """)
     )
   end
 
@@ -145,6 +149,17 @@ defmodule Edict.Features.StepDefinitions.RouteCompletenessSteps do
     assert error.description =~ "outside every edict block"
     assert error.description =~ "unguarded"
     context
+  end
+
+  step "a resources declaration is made inside an unguarded block", context do
+    router =
+      RouterFactory.compile("""
+      unguarded do
+        resources "/things", Edict.Test.EchoPlug
+      end
+      """)
+
+    Map.put(context, :compilation, {:ok, router})
   end
 
   defp route_body, do: ~s|get "/outside", Edict.Test.EchoPlug, :show|

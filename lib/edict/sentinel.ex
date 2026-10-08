@@ -41,25 +41,31 @@ defmodule Edict.Sentinel do
 
   @impl true
   def call(conn, _opts) do
-    Plug.Conn.register_before_send(conn, &verify/1)
+    # What the pipeline had produced by the time the sentinel ran: security
+    # headers belong on the denial too, while anything added later came from
+    # code that never passed an Edict decision.
+    baseline = {conn.resp_headers, conn.resp_cookies}
+    Plug.Conn.register_before_send(conn, &verify(&1, baseline))
   end
 
   # The stamp is set during the request, before any send, so this check sees
   # it regardless of callback ordering.
-  defp verify(%Plug.Conn{private: %{edict: stamp}} = conn) when not is_nil(stamp), do: conn
+  defp verify(%Plug.Conn{private: %{edict: stamp}} = conn, _baseline) when not is_nil(stamp),
+    do: conn
 
   # Rewrites the pending response instead of sending one: Plug runs this
-  # callback while sending, so a send from here would recurse. The denied
-  # handler's headers and cookies are dropped — they were produced by code
-  # that never passed an Edict decision, and Plug merges response cookies
-  # after these callbacks, so anything kept would still reach the client.
-  defp verify(conn) do
+  # callback while sending, so a send from here would recurse. Post-sentinel
+  # headers and cookies are dropped — Plug merges response cookies after
+  # these callbacks, so anything kept would still reach the client — while
+  # the pipeline's own headers and cookies are restored from the baseline.
+  defp verify(conn, {headers, cookies}) do
     conn
-    |> reset_response()
+    |> reset_response(headers, cookies)
     |> Plug.Conn.put_resp_content_type("text/plain")
     |> Plug.Conn.resp(403, "Forbidden")
     |> Plug.Conn.halt()
   end
 
-  defp reset_response(conn), do: %{conn | resp_headers: [], resp_cookies: %{}}
+  defp reset_response(conn, headers, cookies),
+    do: %{conn | resp_headers: headers, resp_cookies: cookies}
 end

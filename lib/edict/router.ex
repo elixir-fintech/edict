@@ -40,9 +40,10 @@ defmodule Edict.Router do
       is required, and `Edict.Plug` rejects the route without it
     * `:permission` — required when the block declares `live` routes, which
       have no action name to derive from; every live route in the block
-      inherits it. When set, it is also the default for the block's
-      controller routes: a route's own `permission:` wins over the block's,
-      which wins over the alias map
+      inherits it. It also guards controller routes whose action has no
+      alias (a route's own `permission:` always wins); when it contradicts
+      an action's alias, compilation fails asking for an explicit route
+      `permission:`
     * `:on_mount` — hooks (a module, `{module, arg}`, or a list) that run in
       the block's live session before Edict's mount hook; typically the app's
       authentication, which the hook needs on the socket to resolve the user
@@ -79,6 +80,16 @@ defmodule Edict.Router do
   @verbs [:get, :post, :put, :patch, :delete, :head, :options]
   @block_opts [:param, :entity_from, :permission, :on_mount]
 
+  # The shadowed Phoenix macros, built once: the verb arities plus the
+  # pass-through macros. Both import lists below come from these, so the
+  # wrapped names exist in exactly one place.
+  @phoenix_except for(verb <- @verbs, arity <- [3, 4], do: {verb, arity}) ++
+                    [match: 4, match: 5, resources: 2, resources: 3, resources: 4] ++
+                    for(arity <- [2, 3, 4], do: {:forward, arity})
+
+  @edict_only [edict: 2, edict: 3, unguarded: 1] ++
+                for(arity <- [2, 3, 4], do: {:live, arity}) ++ @phoenix_except
+
   defmacro __using__(_opts) do
     quote do
       unless Module.has_attribute?(__MODULE__, :phoenix_routes) do
@@ -92,36 +103,9 @@ defmodule Edict.Router do
       require Phoenix.Router
       require Phoenix.LiveView.Router
 
-      # Shadow Phoenix's verb macros with the wrapped ones, plus the three
-      # route macros that must not silently bypass the blocks. Clearing any
-      # app-level import of Phoenix.LiveView.Router would make `live`
-      # ambiguous with the wrapper; live_session stays importable.
-      import Phoenix.Router,
-        except: [
-          get: 3,
-          get: 4,
-          post: 3,
-          post: 4,
-          put: 3,
-          put: 4,
-          patch: 3,
-          patch: 4,
-          delete: 3,
-          delete: 4,
-          head: 3,
-          head: 4,
-          options: 3,
-          options: 4,
-          match: 4,
-          match: 5,
-          resources: 2,
-          resources: 3,
-          resources: 4,
-          forward: 2,
-          forward: 3,
-          forward: 4
-        ]
-
+      # Drop `live` from any app-level Phoenix.LiveView.Router import so the
+      # wrapper is unambiguous; `live_session` stays importable.
+      import Phoenix.Router, except: unquote(@phoenix_except)
       import Phoenix.LiveView.Router, except: [live: 2, live: 3, live: 4]
 
       Module.register_attribute(__MODULE__, :edict_route_context, accumulate: false)
@@ -129,37 +113,7 @@ defmodule Edict.Router do
       Module.register_attribute(__MODULE__, :edict_routes, accumulate: true)
       @before_compile Edict.Router
 
-      import Edict.Router,
-        only: [
-          edict: 2,
-          edict: 3,
-          unguarded: 1,
-          live: 2,
-          live: 3,
-          live: 4,
-          get: 3,
-          get: 4,
-          post: 3,
-          post: 4,
-          put: 3,
-          put: 4,
-          patch: 3,
-          patch: 4,
-          delete: 3,
-          delete: 4,
-          head: 3,
-          head: 4,
-          options: 3,
-          options: 4,
-          match: 4,
-          match: 5,
-          resources: 2,
-          resources: 3,
-          resources: 4,
-          forward: 2,
-          forward: 3,
-          forward: 4
-        ]
+      import Edict.Router, only: unquote(@edict_only)
     end
   end
 
@@ -355,6 +309,12 @@ defmodule Edict.Router do
     quote do
       case Edict.Router.__route_context!(__MODULE__, unquote(verb), unquote(path)) do
         :unguarded ->
+          Edict.Router.__record__(__MODULE__, %{
+            verb: unquote(verb),
+            path: unquote(path),
+            kind: :unguarded
+          })
+
           Phoenix.Router.match(
             unquote(verb),
             unquote(path),
@@ -374,18 +334,49 @@ defmodule Edict.Router do
   end
 
   @doc """
-  Always fails compilation: `resources` generates `index`, `new` and
+  Wraps `Phoenix.Router.resources/4`: allowed inside `unguarded`, but never
+  inside an `edict` block — `resources` generates `index`, `new` and
   `create` routes with no entity ID in their paths, and no member guard can
-  check them. Declare the routes individually inside `edict` or `unguarded`.
+  check them. Declare those routes individually.
   """
-  defmacro resources(path, _controller, _opts \\ [], _rest \\ nil) do
+  defmacro resources(path, controller, opts \\ [], rest \\ nil) do
+    # The do-block form arrives as `rest`; forward the exact arity Phoenix
+    # expects for each shape.
+    phoenix_call =
+      if rest == nil do
+        quote do
+          Phoenix.Router.resources(unquote(path), unquote(controller), unquote(opts))
+        end
+      else
+        quote do
+          Phoenix.Router.resources(
+            unquote(path),
+            unquote(controller),
+            unquote(opts),
+            unquote(rest)
+          )
+        end
+      end
+
     quote do
-      raise CompileError,
-        description:
-          "resources #{inspect(unquote(path))} is not supported in routers using " <>
-            "Edict.Router: it generates index, new and create routes without an " <>
-            "entity ID, which no member guard can check. Declare the routes " <>
-            "individually inside edict or unguarded"
+      case Edict.Router.__route_context!(__MODULE__, :resources, unquote(path)) do
+        :unguarded ->
+          Edict.Router.__record__(__MODULE__, %{
+            verb: :resources,
+            path: unquote(path),
+            kind: :unguarded
+          })
+
+          unquote(phoenix_call)
+
+        {:edict, _, _} ->
+          raise CompileError,
+            description:
+              "resources #{inspect(unquote(path))} inside an edict block would generate " <>
+                "index, new and create routes without an entity ID, which no member " <>
+                "guard can check. Declare those routes individually, or move the " <>
+                "resources call to an unguarded block"
+      end
     end
   end
 
@@ -398,6 +389,12 @@ defmodule Edict.Router do
     quote do
       case Edict.Router.__route_context!(__MODULE__, :forward, unquote(path)) do
         :unguarded ->
+          Edict.Router.__record__(__MODULE__, %{
+            verb: :forward,
+            path: unquote(path),
+            kind: :unguarded
+          })
+
           Phoenix.Router.forward(
             unquote(path),
             unquote(plug),
@@ -486,8 +483,11 @@ defmodule Edict.Router do
       [permission: permission, entity_type: entity_type] ++
         Keyword.take(block_opts, [:param, :entity_from])
 
-  # Resolution order: the route's own permission: option, then the block's,
-  # then the alias map.
+  # Resolution: the route's own permission: option; otherwise, for actions
+  # with no alias, the block's permission; otherwise the alias. A block
+  # permission that contradicts the alias fails compilation — silently
+  # guarding a mutating action with a reading permission is the failure this
+  # prevents.
   defp resolve_permission!(
          entity_type,
          _action,
@@ -500,16 +500,40 @@ defmodule Edict.Router do
     route_permission
   end
 
+  defp resolve_permission!(_entity_type, _action, _route_permission, block_permission, nil)
+       when is_atom_present(block_permission),
+       do: block_permission
+
+  # No config module at compile time: the raw action name stands in for the
+  # permission, and the runtime validate_permission!/3 is the backstop.
+  defp resolve_permission!(_entity_type, action, _route_permission, _block_permission, nil),
+    do: action
+
   defp resolve_permission!(
          entity_type,
-         _action,
+         action,
          _route_permission,
          block_permission,
          config_module
        )
        when is_atom_present(block_permission) do
-    validate_pair!(config_module, entity_type, block_permission)
-    block_permission
+    case config_module.permission_alias(action) do
+      nil ->
+        validate_pair!(config_module, entity_type, block_permission)
+        block_permission
+
+      ^block_permission ->
+        validate_pair!(config_module, entity_type, block_permission)
+        block_permission
+
+      alias_permission ->
+        raise CompileError,
+          description:
+            "action #{inspect(action)} on #{inspect(entity_type)} derives " <>
+              "#{inspect(alias_permission)} from permission_aliases, but the edict " <>
+              "block declares #{inspect(block_permission)}. Pass permission: on the " <>
+              "route to choose one explicitly"
+    end
   end
 
   defp resolve_permission!(_entity_type, action, _route_permission, _block_permission, nil),

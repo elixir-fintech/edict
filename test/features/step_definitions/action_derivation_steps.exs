@@ -85,6 +85,17 @@ defmodule Edict.Features.StepDefinitions.ActionDerivationSteps do
     e in CompileError -> {:error, e}
   end
 
+  step "compilation fails asking for an explicit route permission", context do
+    {:error, %CompileError{} = error} = context.compilation
+    description = error.description
+
+    assert description =~ ":show"
+    assert description =~ ":read"
+    assert description =~ ":write"
+    assert description =~ "permission:"
+    context
+  end
+
   step "compilation fails mentioning {string} and both remedies", %{args: [action]} = context do
     {:error, %CompileError{} = error} = context.compilation
     description = error.description
