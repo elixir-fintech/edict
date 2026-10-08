@@ -279,6 +279,7 @@ defmodule Edict do
       {:valid_permission?, 2},
       {:permissions_for, 2},
       {:strong_permission?, 2},
+      {:permission_alias, 1},
       {:user_id_from_assigns, 1},
       {:on_unauthorized, 0}
     ]

@@ -9,6 +9,13 @@ defmodule Edict.Config do
 
         user_from_assigns fn assigns -> assigns.current_user.id end
 
+        # Optional; these are the shipped defaults:
+        permission_aliases [
+          index: :read, show: :read,
+          new: :write, edit: :write, create: :write, update: :write,
+          delete: :delete
+        ]
+
         strong_permissions do
           on :account, permissions: [:delete]
         end
@@ -19,9 +26,14 @@ defmodule Edict.Config do
           entity :account, struct: MyApp.Account
         end
 
+        role :viewer do
+          on :project, permissions: [:read]
+        end
+
         role :admin do
+          extends :viewer
           on :organization, permissions: [:read, :write, :delete]
-          on :project, permissions: [:read, :write, :delete]
+          on :project, permissions: [:write, :delete]
           on :account, permissions: [:delete]
         end
       end
@@ -30,15 +42,26 @@ defmodule Edict.Config do
   naming the same `struct:` would generate duplicate `Edict.Entity` implementations.
 
   This compiles into fast lookup functions:
-  - `permissions_for/2` — permissions a role grants on an entity type
+  - `permissions_for/2` — permissions a role grants on an entity type, including everything inherited through `extends`
   - `valid_role?/1` — whether a role is defined
   - `valid_entity_type?/1` — whether an entity type is defined
   - `valid_permission?/2` — whether a permission is valid for an entity type
   - `strong_permission?/2` — whether enforcement always checks a (permission, entity type) pair against the database
+  - `permission_alias/1` — the permission a Phoenix action name maps to, or `nil`
   - `entity_types/0` — list of valid entity types
   - `user_id_from_assigns/1` — extract user ID from conn/socket assigns
   - `on_unauthorized/0` — the denial handler for Plug and LiveView
   """
+
+  @default_permission_aliases [
+    index: :read,
+    show: :read,
+    new: :write,
+    edit: :write,
+    create: :write,
+    update: :write,
+    delete: :delete
+  ]
 
   defmacro __using__(_opts) do
     quote do
@@ -47,13 +70,16 @@ defmodule Edict.Config do
       Module.register_attribute(__MODULE__, :edict_entities, accumulate: true)
       Module.register_attribute(__MODULE__, :edict_roles, accumulate: true)
       Module.register_attribute(__MODULE__, :edict_role_permissions, accumulate: true)
+      Module.register_attribute(__MODULE__, :edict_role_extends, accumulate: true)
       Module.register_attribute(__MODULE__, :edict_strong_pairs, accumulate: true)
+      Module.register_attribute(__MODULE__, :edict_permission_aliases, accumulate: false)
       Module.register_attribute(__MODULE__, :edict_user_from_assigns, accumulate: false)
       Module.register_attribute(__MODULE__, :edict_on_unauthorized, accumulate: false)
       Module.register_attribute(__MODULE__, :edict_current_role, accumulate: false)
       Module.register_attribute(__MODULE__, :edict_strong_block, accumulate: false)
       Module.register_attribute(__MODULE__, :edict_strong_declared, accumulate: false)
 
+      Module.put_attribute(__MODULE__, :edict_permission_aliases, nil)
       Module.put_attribute(__MODULE__, :edict_user_from_assigns, nil)
       Module.put_attribute(__MODULE__, :edict_on_unauthorized, nil)
       Module.put_attribute(__MODULE__, :edict_current_role, nil)
@@ -67,9 +93,11 @@ defmodule Edict.Config do
           entity: 2,
           role: 2,
           on: 2,
+          extends: 1,
           user_from_assigns: 1,
           on_unauthorized: 1,
-          strong_permissions: 1
+          strong_permissions: 1,
+          permission_aliases: 1
         ]
     end
   end
@@ -104,6 +132,43 @@ defmodule Edict.Config do
 
     quote do
       Module.put_attribute(__MODULE__, :edict_on_unauthorized, unquote(escaped))
+    end
+  end
+
+  @doc """
+  Maps Phoenix action names to Edict permissions.
+
+  An app's declaration merges over the shipped defaults entry by entry: app
+  entries win, unmapped names keep their default, and only the entries you
+  name change. The defaults are:
+
+      index: :read, show: :read,
+      new: :write, edit: :write, create: :write, update: :write,
+      delete: :delete
+
+  Aliases are a global naming convention, deliberately not per entity type:
+  the resolved permission is validated per entity type where it is used, and
+  a name meaning different permissions per entity type is better stated
+  explicitly. Generates `permission_alias/1`, which returns the permission
+  or `nil` when unmapped.
+  """
+  defmacro permission_aliases(aliases) do
+    unless Keyword.keyword?(aliases) and
+             Enum.all?(aliases, fn {_name, permission} -> is_atom(permission) end) do
+      raise CompileError,
+        description:
+          "permission_aliases expects a keyword list of atoms, got: #{Macro.to_string(aliases)}"
+    end
+
+    quote do
+      Module.put_attribute(
+        __MODULE__,
+        :edict_permission_aliases,
+        Keyword.merge(
+          Module.get_attribute(__MODULE__, :edict_permission_aliases) || [],
+          unquote(aliases)
+        )
+      )
     end
   end
 
@@ -175,6 +240,29 @@ defmodule Edict.Config do
   end
 
   @doc """
+  Inside `role/2`: inherits every permission the named role declares, across
+  all entity types.
+
+  Takes a role name or a list; multiple extends union. The transitive union
+  is resolved when the config compiles, so `permissions_for/2` reports
+  effective permissions and no runtime, storage, or cache behavior changes:
+  assigning a role still stores a single row. An unknown parent or an
+  inheritance cycle fails compilation.
+  """
+  defmacro extends(parents) do
+    quote do
+      unless Module.get_attribute(__MODULE__, :edict_current_role) do
+        raise CompileError, description: "extends is only valid inside role/2"
+      end
+
+      Module.put_attribute(__MODULE__, :edict_role_extends, {
+        Module.get_attribute(__MODULE__, :edict_current_role),
+        List.wrap(unquote(parents))
+      })
+    end
+  end
+
+  @doc """
   Inside `role/2`: grants `permissions:` on an entity type declared in `entity_types/1`.
   Inside `strong_permissions/1`: marks the listed permissions strong on the entity type.
 
@@ -214,12 +302,18 @@ defmodule Edict.Config do
     entities = Module.get_attribute(env.module, :edict_entities)
     roles = Module.get_attribute(env.module, :edict_roles)
     role_permissions = Module.get_attribute(env.module, :edict_role_permissions)
+    role_extends = Module.get_attribute(env.module, :edict_role_extends)
     strong_pairs = strong_pairs(Module.get_attribute(env.module, :edict_strong_pairs))
+
+    permission_aliases =
+      merged_permission_aliases(Module.get_attribute(env.module, :edict_permission_aliases))
 
     user_fn = user_fn(Module.get_attribute(env.module, :edict_user_from_assigns))
     unauthorized_fn = unauthorized_fn(Module.get_attribute(env.module, :edict_on_unauthorized))
 
     entity_type_names = Enum.map(entities, fn {name, _, _} -> name end)
+
+    resolved_permissions = resolve_role_permissions!(roles, role_extends, role_permissions)
 
     validate_entity_types!(role_permissions, entity_type_names)
     validate_strong_pairs!(strong_pairs, role_permissions, entity_type_names)
@@ -238,9 +332,12 @@ defmodule Edict.Config do
       def valid_role?(role), do: role in unquote(roles)
 
       @spec permissions_for(atom(), atom()) :: [atom()]
-      unquote_splicing(permissions_for_clauses(role_permissions))
+      unquote_splicing(permissions_for_clauses(resolved_permissions))
 
-      @doc "Returns the permissions a role grants on an entity type. Returns `[]` for undefined combinations."
+      @doc """
+      Returns the permissions a role grants on an entity type, including
+      everything inherited through `extends`. Returns `[]` for undefined combinations.
+      """
       def permissions_for(_role, _entity_type), do: []
 
       @spec valid_permission?(atom(), atom()) :: boolean()
@@ -253,6 +350,11 @@ defmodule Edict.Config do
       @spec strong_permission?(atom(), atom()) :: boolean()
       def strong_permission?(permission, entity_type),
         do: {permission, entity_type} in unquote(Enum.uniq(strong_pairs))
+
+      @doc "Returns the permission the Phoenix action name maps to, or `nil` when unmapped."
+      @spec permission_alias(atom()) :: atom() | nil
+      def permission_alias(action_name),
+        do: Keyword.get(unquote(Macro.escape(permission_aliases)), action_name)
 
       @doc "Extracts the user ID from conn/socket assigns."
       @spec user_id_from_assigns(map()) :: term()
@@ -280,11 +382,59 @@ defmodule Edict.Config do
     :ok
   end
 
-  defp permissions_for_clauses(role_permissions) do
-    Enum.map(role_permissions, fn {role, entity_type, permissions} ->
+  defp permissions_for_clauses(resolved_permissions) do
+    for {role, per_entity_type} <- resolved_permissions,
+        {entity_type, permissions} <- per_entity_type do
       quote do
         def permissions_for(unquote(role), unquote(entity_type)), do: unquote(permissions)
       end
+    end
+  end
+
+  # %{role => %{entity_type => [permissions]}} — the transitive union of each
+  # role's own and inherited grants, resolved when the config compiles so the
+  # runtime stays role-keyed and unchanged.
+  defp resolve_role_permissions!(roles, role_extends, role_permissions) do
+    extends =
+      Enum.reduce(role_extends, %{}, fn {role, parents}, acc ->
+        Map.update(acc, role, parents, &Enum.uniq(&1 ++ parents))
+      end)
+
+    for {role, parents} <- extends,
+        parent <- parents,
+        parent not in roles do
+      raise CompileError,
+        description:
+          "Role #{inspect(role)} extends undefined role #{inspect(parent)}. " <>
+            "Defined roles: #{inspect(roles)}"
+    end
+
+    Map.new(roles, fn role ->
+      {role, effective_permissions(role, extends, role_permissions, [])}
+    end)
+  end
+
+  defp effective_permissions(role, extends, role_permissions, trail) do
+    if role in trail do
+      raise CompileError,
+        description:
+          "Inheritance cycle in role definitions: #{inspect(Enum.reverse([role | trail]))}"
+    end
+
+    own =
+      Enum.reduce(role_permissions, %{}, fn
+        {^role, entity_type, permissions}, acc -> Map.put_new(acc, entity_type, permissions)
+        _, acc -> acc
+      end)
+
+    extends
+    |> Map.get(role, [])
+    |> Enum.reduce(own, fn parent, acc ->
+      inherited = effective_permissions(parent, extends, role_permissions, [role | trail])
+
+      Map.merge(acc, inherited, fn _entity_type, own_permissions, inherited_permissions ->
+        Enum.uniq(own_permissions ++ inherited_permissions)
+      end)
     end)
   end
 
@@ -320,6 +470,11 @@ defmodule Edict.Config do
       Enum.map(permissions, &{&1, entity_type})
     end)
   end
+
+  defp merged_permission_aliases(nil), do: @default_permission_aliases
+
+  defp merged_permission_aliases(aliases),
+    do: Keyword.merge(@default_permission_aliases, aliases)
 
   defp user_fn(nil), do: quote(do: fn assigns -> assigns.current_user.id end)
   defp user_fn(user_from_assigns), do: user_from_assigns

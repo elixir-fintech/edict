@@ -22,17 +22,21 @@ defmodule Edict.Test.Config do
   end
 
   role :admin do
-    on(:organization, permissions: [:read, :write, :delete, :manage, :billing])
-    on(:team, permissions: [:read, :write, :delete, :manage])
-    on(:project, permissions: [:read, :write, :delete, :manage])
-    on(:resource, permissions: [:read, :write, :delete])
+    extends(:editor)
+
+    on(:organization, permissions: [:delete, :manage, :billing])
+    on(:team, permissions: [:delete, :manage])
+    on(:project, permissions: [:delete, :manage])
+    on(:resource, permissions: [:delete])
   end
 
   role :editor do
-    on(:organization, permissions: [:read, :write])
-    on(:team, permissions: [:read, :write])
-    on(:project, permissions: [:read, :write])
-    on(:resource, permissions: [:read, :write])
+    extends(:viewer)
+
+    on(:organization, permissions: [:write])
+    on(:team, permissions: [:write])
+    on(:project, permissions: [:write])
+    on(:resource, permissions: [:write])
   end
 
   role :viewer do

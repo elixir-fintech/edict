@@ -175,22 +175,139 @@ defmodule Edict.ConfigTest do
     end
   end
 
+  describe "permission_alias/1" do
+    test "maps the shipped default action names" do
+      assert Edict.Test.Config.permission_alias(:index) == :read
+      assert Edict.Test.Config.permission_alias(:show) == :read
+      assert Edict.Test.Config.permission_alias(:new) == :write
+      assert Edict.Test.Config.permission_alias(:edit) == :write
+      assert Edict.Test.Config.permission_alias(:create) == :write
+      assert Edict.Test.Config.permission_alias(:update) == :write
+      assert Edict.Test.Config.permission_alias(:delete) == :delete
+    end
+
+    test "returns nil for an unmapped name" do
+      assert is_nil(Edict.Test.Config.permission_alias(:billing))
+    end
+
+    test "an app declaration merges over the defaults entry by entry" do
+      module =
+        compile_config("""
+        permission_aliases(show: :view, archive: :delete)
+
+        entity(:team)
+
+        role :curator do
+          on(:team, permissions: [:view, :delete])
+        end
+        """)
+
+      assert module.permission_alias(:show) == :view
+      assert module.permission_alias(:index) == :read
+      assert module.permission_alias(:archive) == :delete
+      assert is_nil(module.permission_alias(:billing))
+    end
+
+    test "rejects a value that is not a keyword list of atoms" do
+      assert_raise CompileError, ~r/keyword list of atoms/, fn ->
+        compile_config("permission_aliases(show: \"read\")")
+      end
+    end
+  end
+
+  describe "extends (role seniority)" do
+    test "unions the parent's permissions into the extending role" do
+      permissions = Edict.Test.Config.permissions_for(:editor, :project)
+      assert :read in permissions
+      assert :write in permissions
+    end
+
+    test "composes transitively" do
+      permissions = Edict.Test.Config.permissions_for(:admin, :project)
+      assert :read in permissions
+      assert :write in permissions
+      assert :delete in permissions
+    end
+
+    test "inherits across every entity type the parent declares" do
+      assert Enum.sort(Edict.Test.Config.permissions_for(:editor, :resource)) == [:read, :write]
+    end
+
+    test "multiple extends is a union" do
+      module =
+        compile_config("""
+        entity(:team)
+
+        role :reader do
+          on(:team, permissions: [:read])
+        end
+
+        role :writer do
+          on(:team, permissions: [:write])
+        end
+
+        role :manager do
+          extends [:reader, :writer]
+          on(:team, permissions: [:manage])
+        end
+        """)
+
+      assert Enum.sort(module.permissions_for(:manager, :team)) == [:manage, :read, :write]
+    end
+
+    test "an unknown parent fails compilation" do
+      assert_raise CompileError, ~r/ghost/, fn ->
+        compile_config("""
+        role :manager do
+          extends :ghost
+          on(:account, permissions: [:write])
+        end
+        """)
+      end
+    end
+
+    test "an inheritance cycle fails compilation" do
+      assert_raise CompileError, ~r/cycle/, fn ->
+        compile_config("""
+        role :a do
+          extends :b
+          on(:account, permissions: [:read])
+        end
+
+        role :b do
+          extends :a
+          on(:account, permissions: [:write])
+        end
+        """)
+      end
+    end
+
+    test "extends outside a role fails compilation" do
+      assert_raise CompileError, ~r/only valid inside role/, fn ->
+        compile_config("extends :viewer")
+      end
+    end
+  end
+
   defp compile_config(declaration) do
     module = "Edict.ConfigTest.Compiled#{System.unique_integer([:positive])}"
 
-    Code.compile_string("""
-    defmodule #{module} do
-      use Edict.Config
-      #{declaration}
+    [{compiled, _binary}] =
+      Code.compile_string("""
+      defmodule #{module} do
+        use Edict.Config
+        #{declaration}
 
-      entity_types do
-        entity(:account)
-      end
+        entity_types do
+          entity(:account)
+        end
 
-      role :viewer do
-        on(:account, permissions: [:read])
+        role :viewer do
+          on(:account, permissions: [:read])
+        end
       end
-    end
-    """)
+      """)
+
+    compiled
   end
 end
