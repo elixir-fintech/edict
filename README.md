@@ -76,6 +76,89 @@ children = [
 `Edict.Supervisor` takes no options and validates the config module when it starts
 (`Edict.validate_config!/1`), so a module missing a required function fails at boot.
 
+## Default-on enforcement
+
+Edict is strict by default at the router: every route is guarded unless it explicitly opts out.
+
+```elixir
+defmodule MyAppWeb.Router do
+  use MyAppWeb, :router
+  use Edict.Router
+
+  scope "/", MyAppWeb do
+    pipe_through [:browser]
+
+    edict :project, param: "project_id" do
+      get    "/projects/:project_id", ProjectController, :show    # → :read
+      put    "/projects/:project_id", ProjectController, :update  # → :write
+      delete "/projects/:project_id", ProjectController, :delete  # → :delete
+      get    "/projects/:project_id/billing", ProjectController, :billing, permission: :billing
+    end
+
+    edict :project, param: "project_id", permission: :read do
+      live "/projects/:project_id", ProjectShowLive
+    end
+
+    # The explicit opt-out, for genuinely public routes:
+    unguarded do
+      live "/dev/dashboard", Phoenix.LiveDashboard
+      get "/health", HealthController, :check
+    end
+  end
+end
+```
+
+`use Edict.Router` must come after `use Phoenix.Router` (usually via
+`use MyAppWeb, :router`). It re-imports Phoenix's route macros in wrapped form,
+so any route outside an `edict` or `unguarded` block fails compilation naming
+the route and both remedies — an unguarded route is a build failure, not a
+runtime hole. Routers that never `use Edict.Router` compile untouched.
+
+### edict blocks
+
+Each route inside an `edict` block gets `Edict.Plug` with the block's entity
+type and ID source (`param:` or `entity_from:`). Controller routes derive
+their permission from the Phoenix action name via
+[permission aliases](#permission-aliases); an unmapped name fails compilation.
+A per-route `permission:` option wins over the alias.
+
+Live routes have no action name to derive from, so a block carrying them must
+declare `permission:` — missing it fails compilation. The block becomes a
+`live_session` whose `on_mount` is `{Edict.LiveView, block options}`, so every
+live route inside mounts guarded, inheriting the block's permission. One block
+is one permission: split views needing different mount permissions into
+separate blocks.
+
+### unguarded
+
+`unguarded` is the explicit opt-out for genuinely public routes — dashboards,
+health checks. It is the only one; there is no controller-level skip.
+
+### Sentinel as defense in depth
+
+```elixir
+pipeline :browser do
+  ...
+  plug Edict.Sentinel
+end
+```
+
+The sentinel denies, at response time, any request that never passed an Edict
+decision. For apps wiring `Edict.Plug` by hand it blocks only the response,
+not the handler's side effects — acceptable only as the second line behind the
+router compiler.
+
+### Auditing LiveView events in CI
+
+LiveView events are guarded per view with `authorize` (see
+[Per-event authorization](#per-event-authorization-liveview)). `mix edict.audit`
+diffs `handle_event` clauses against those declarations and exits non-zero on
+gaps:
+
+```bash
+mix edict.audit
+```
+
 ## Defining roles
 
 Create a config module using the `Edict.Config` DSL:
@@ -217,6 +300,10 @@ under a plain `Repo.transaction/1`, and `Edict.Multi.transaction/1` raises insid
 transaction.
 
 ## Checking permissions
+
+With `Edict.Router`, the router is the primary wiring point; this section shows
+the underlying plug and LiveView wiring the router generates (see
+[Default-on enforcement](#default-on-enforcement)).
 
 ### In controllers (Plug)
 
