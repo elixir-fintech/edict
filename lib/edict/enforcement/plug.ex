@@ -51,21 +51,38 @@ defmodule Edict.Enforcement.Plug do
     Helpers.validate_permission!(edict_config.config_module, opts.permission, entity_type)
     entity_id = entity_id(opts, conn)
 
+    with {:ok, document} <- check(edict_config, user_id, opts.permission, entity_type, entity_id) do
+      conn
+      |> decide(:allow, opts, entity_id)
+      |> Plug.Conn.assign(:current_user_roles, document)
+    else
+      :denied ->
+        conn
+        |> decide(:deny, opts, entity_id)
+        |> unauthorized(edict_config.config_module)
+    end
+  end
+
+  defp check(edict_config, user_id, permission, entity_type, entity_id) do
     with user_id when is_binary(user_id) <- user_id,
          document = Helpers.load_document(edict_config, user_id),
          true <-
-           Helpers.authorized?(
-             edict_config,
-             document,
-             opts.permission,
-             entity_type,
-             entity_id,
-             []
-           ) do
-      Plug.Conn.assign(conn, :current_user_roles, document)
+           Helpers.authorized?(edict_config, document, permission, entity_type, entity_id, []) do
+      {:ok, document}
     else
-      _denied -> unauthorized(conn, edict_config.config_module)
+      _ -> :denied
     end
+  end
+
+  # The stamp records the decision: a declared-but-denied request keeps its
+  # denial, and Edict.Sentinel passes any stamped request through.
+  defp decide(conn, decision, opts, entity_id) do
+    Plug.Conn.put_private(conn, :edict, %{
+      decision: decision,
+      permission: opts.permission,
+      entity_type: opts.entity_type,
+      entity_id: entity_id
+    })
   end
 
   defp entity_id(%{param: param}, conn), do: conn.params[param]

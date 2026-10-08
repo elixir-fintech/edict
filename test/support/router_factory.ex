@@ -27,6 +27,27 @@ defmodule Edict.Test.RouterFactory do
     compiled
   end
 
+  @doc """
+  Compiles a router from a top-level body, for scenarios that declare their
+  own pipelines and scopes.
+  """
+  @spec compile_top(String.t()) :: module()
+  def compile_top(body) do
+    module = "Edict.Features.Routers.Compiled#{System.unique_integer([:positive])}"
+
+    [{compiled, _binary}] =
+      Code.compile_string("""
+      defmodule #{module} do
+        use Phoenix.Router, helpers: false
+        use Edict.Router
+
+        #{body}
+      end
+      """)
+
+    compiled
+  end
+
   @spec try_compile(String.t()) :: {:ok, module()} | {:error, Exception.t()}
   def try_compile(body) do
     {:ok, compile(body)}
@@ -76,6 +97,19 @@ defmodule Edict.Test.RouterFactory do
   def request(router, path) do
     Plug.Test.conn(:get, path)
     |> Plug.Conn.put_private(:phoenix_router, router)
+    |> router.call(router.init(nil))
+  end
+
+  @doc """
+  Dispatches a GET request as `user`: carries the test identity header an
+  app's pipeline would read, and the endpoint live routes need.
+  """
+  @spec request_as(module(), String.t(), String.t()) :: Plug.Conn.t()
+  def request_as(router, path, user) do
+    Plug.Test.conn(:get, path)
+    |> Plug.Conn.put_req_header("x-test-user", user)
+    |> Plug.Conn.put_private(:phoenix_router, router)
+    |> Plug.Conn.put_private(:phoenix_endpoint, Edict.Test.Endpoint)
     |> router.call(router.init(nil))
   end
 

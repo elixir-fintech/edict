@@ -62,6 +62,9 @@ defmodule Edict.Router do
     * `:permission` — required when the block declares `live` routes, which
       have no action name to derive from; every live route in the block
       inherits it
+    * `:on_mount` — hooks (a module, `{module, arg}`, or a list) that run in
+      the block's live session before Edict's mount hook; typically the app's
+      authentication, which the hook needs on the socket to resolve the user
 
   Controller routes derive their permission from the Phoenix action name via
   the config's `permission_alias/1`, or declare their own with a per-route
@@ -91,7 +94,7 @@ defmodule Edict.Router do
   """
 
   @verbs [:get, :post, :put, :patch, :delete, :head, :options]
-  @block_opts [:param, :entity_from, :permission]
+  @block_opts [:param, :entity_from, :permission, :on_mount]
 
   defmacro __using__(_opts) do
     quote do
@@ -166,7 +169,8 @@ defmodule Edict.Router do
   See the module documentation for the options. Blocks may not nest.
   """
   defmacro edict(entity_type, opts \\ [], do: block) do
-    validate_edict_opts!(entity_type, opts)
+    on_mount = expand_on_mount(opts[:on_mount], __CALLER__)
+    validate_edict_opts!(entity_type, opts, on_mount)
 
     permission = opts[:permission]
 
@@ -176,11 +180,15 @@ defmodule Edict.Router do
           [permission: permission, entity_type: entity_type] ++
             Keyword.take(opts, [:param, :entity_from])
 
+        # The app's own hooks (typically authentication) run before Edict's:
+        # the mount hook resolves the user from socket assigns they set.
+        on_mount_hooks = List.wrap(on_mount) ++ [{Edict.LiveView, mount_opts}]
+
         session = :"edict_#{entity_type}_#{permission}_#{System.unique_integer([:positive])}"
 
         quote do
           Phoenix.LiveView.Router.live_session unquote(session),
-            on_mount: {Edict.LiveView, unquote(mount_opts)} do
+            on_mount: unquote(on_mount_hooks) do
             scope [] do
               pipe_through([{Edict.Router.Declaration, [declaration: :edict]}])
               unquote(block)
@@ -464,7 +472,7 @@ defmodule Edict.Router do
     end
   end
 
-  defp validate_edict_opts!(entity_type, opts) do
+  defp validate_edict_opts!(entity_type, opts, on_mount) do
     unless is_atom(entity_type) and not is_nil(entity_type) do
       raise CompileError,
         description: "edict expects an entity type atom, got: #{Macro.to_string(entity_type)}"
@@ -487,6 +495,13 @@ defmodule Edict.Router do
         description: "edict param: must be a string, got: #{inspect(opts[:param])}"
     end
 
+    unless on_mount_hook?(on_mount) do
+      raise CompileError,
+        description:
+          "edict on_mount: must be a module, {module, arg} or a list of them, " <>
+            "got: #{inspect(on_mount)}"
+    end
+
     case Keyword.split(opts, @block_opts) do
       {_known, []} ->
         :ok
@@ -497,4 +512,30 @@ defmodule Edict.Router do
             "edict got unknown options #{inspect(unknown)}. Valid options: #{inspect(@block_opts)}"
     end
   end
+
+  # nil (absent), a module, {module, arg}, or a list of those.
+  defp on_mount_hook?(hooks) when is_nil(hooks) or hooks == [], do: true
+
+  defp on_mount_hook?(hooks) when is_list(hooks) and hooks != [],
+    do: Enum.all?(hooks, &on_mount_hook?/1)
+
+  defp on_mount_hook?(module) when is_atom(module) and not is_nil(module), do: true
+  defp on_mount_hook?({module, _arg}) when is_atom(module), do: true
+  defp on_mount_hook?(_), do: false
+
+  # Alias ASTs must be resolved against the caller's scope before they reach
+  # the live_session options.
+  defp expand_on_mount(nil, _caller), do: []
+
+  defp expand_on_mount(hooks, caller) when is_list(hooks),
+    do: Enum.map(hooks, &expand_on_mount(&1, caller))
+
+  defp expand_on_mount({{:__aliases__, _, _} = alias, arg}, caller),
+    do: {Macro.expand(alias, caller), arg}
+
+  defp expand_on_mount({module, arg}, _caller) when is_atom(module), do: {module, arg}
+
+  defp expand_on_mount({:__aliases__, _, _} = alias, caller), do: Macro.expand(alias, caller)
+
+  defp expand_on_mount(module, _caller) when is_atom(module), do: module
 end
