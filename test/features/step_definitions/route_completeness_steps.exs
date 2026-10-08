@@ -95,6 +95,58 @@ defmodule Edict.Features.StepDefinitions.RouteCompletenessSteps do
     context
   end
 
+  step "a resources declaration is made inside an edict block", context do
+    Map.put(
+      context,
+      :compilation,
+      RouterFactory.try_compile(~s|resources "/things", Edict.Test.EchoPlug|)
+    )
+  end
+
+  step "compilation fails instructing to declare routes individually", context do
+    {:error, %CompileError{} = error} = context.compilation
+
+    assert error.description =~ "resources"
+    assert error.description =~ "individually"
+    context
+  end
+
+  step "a match route is declared inside an edict block", context do
+    Map.put(
+      context,
+      :compilation,
+      RouterFactory.try_compile("""
+      edict :project, [param: "project_id"] do
+        match :get, "/things/:project_id", Edict.Test.EchoPlug, :show
+      end
+      """)
+    )
+  end
+
+  step "compilation fails instructing to use the verb macros", context do
+    {:error, %CompileError{} = error} = context.compilation
+
+    assert error.description =~ "match"
+    assert error.description =~ "verb macros"
+    context
+  end
+
+  step "a forward is declared outside an unguarded block", context do
+    Map.put(
+      context,
+      :compilation,
+      RouterFactory.try_compile(~s|forward "/admin", Edict.Test.EchoPlug|)
+    )
+  end
+
+  step "compilation fails instructing to wrap it in unguarded", context do
+    {:error, %CompileError{} = error} = context.compilation
+
+    assert error.description =~ "outside every edict block"
+    assert error.description =~ "unguarded"
+    context
+  end
+
   defp route_body, do: ~s|get "/outside", Edict.Test.EchoPlug, :show|
   defp live_body, do: ~s|live "/outside", Edict.Test.RouterLive|
 end

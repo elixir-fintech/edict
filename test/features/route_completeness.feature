@@ -27,3 +27,18 @@ Feature: Route completeness
     Given the application also has a plain Phoenix router
     When a route is declared in it outside any edict block
     Then that router compiles without Edict errors
+
+  Scenario: A resources declaration fails compilation
+    Given the router uses Edict.Router
+    When a resources declaration is made inside an edict block
+    Then compilation fails instructing to declare routes individually
+
+  Scenario: A match inside an edict block fails compilation
+    Given the router uses Edict.Router
+    When a match route is declared inside an edict block
+    Then compilation fails instructing to use the verb macros
+
+  Scenario: A forward outside an unguarded block fails compilation
+    Given the router uses Edict.Router
+    When a forward is declared outside an unguarded block
+    Then compilation fails instructing to wrap it in unguarded

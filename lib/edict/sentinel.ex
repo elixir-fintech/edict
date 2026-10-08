@@ -37,24 +37,29 @@ defmodule Edict.Sentinel do
   @behaviour Plug
 
   @impl true
-  def init(opts) when is_list(opts), do: Map.new(opts)
+  def init(opts), do: opts
 
   @impl true
   def call(conn, _opts) do
     Plug.Conn.register_before_send(conn, &verify/1)
   end
 
-  # before_send callbacks run in reverse registration order, and the sentinel
-  # registers in a pipeline, before any per-route guard runs — so the stamp is
-  # in place by the time this verifies it.
+  # The stamp is set during the request, before any send, so this check sees
+  # it regardless of callback ordering.
   defp verify(%Plug.Conn{private: %{edict: stamp}} = conn) when not is_nil(stamp), do: conn
 
   # Rewrites the pending response instead of sending one: Plug runs this
-  # callback while sending, so a send from here would recurse.
+  # callback while sending, so a send from here would recurse. The denied
+  # handler's headers and cookies are dropped — they were produced by code
+  # that never passed an Edict decision, and Plug merges response cookies
+  # after these callbacks, so anything kept would still reach the client.
   defp verify(conn) do
     conn
+    |> reset_response()
     |> Plug.Conn.put_resp_content_type("text/plain")
     |> Plug.Conn.resp(403, "Forbidden")
     |> Plug.Conn.halt()
   end
+
+  defp reset_response(conn), do: %{conn | resp_headers: [], resp_cookies: %{}}
 end

@@ -21,3 +21,8 @@ Feature: Action derivation
     And no role grants "read" on "spaceship"
     When a "show" route for "spaceship" is declared inside an edict block
     Then compilation fails mentioning the entity type and the permission
+
+  Scenario: A block permission is the controller default
+    Given an edict block for "project" declares permission "write"
+    When a "show" route for "project" is declared inside an edict block without "permission:"
+    Then the route is guarded with permission "write" on entity type "project"
