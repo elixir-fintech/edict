@@ -1,24 +1,3 @@
-defmodule Edict.Router.Declaration do
-  @moduledoc """
-  Stamps `conn.private[:edict]` with the router's declaration.
-
-  Emitted by `Edict.Router` around live routes — whose check happens in
-  `on_mount`, on the socket, not in a plug — and around `unguarded` blocks.
-  A declaration is not a decision: when `Edict.Plug` runs it overwrites the
-  stamp with its decision, and a present stamp simply marks the request as
-  declared. Options are a keyword list, since plug options in `pipe_through`
-  must survive `Macro.escape/1`.
-  """
-
-  @behaviour Plug
-
-  @impl true
-  def init(declaration), do: declaration
-
-  @impl true
-  def call(conn, declaration), do: Plug.Conn.put_private(conn, :edict, declaration)
-end
-
 defmodule Edict.Router do
   @moduledoc """
   Default-on route enforcement: routes live in `edict` or `unguarded` blocks.
@@ -94,6 +73,8 @@ defmodule Edict.Router do
 
   The resolved guards are introspectable via `__edict_routes__/0`.
   """
+
+  import Edict.Guards
 
   @verbs [:get, :post, :put, :patch, :delete, :head, :options]
   @block_opts [:param, :entity_from, :permission, :on_mount]
@@ -194,14 +175,11 @@ defmodule Edict.Router do
     permission = opts[:permission]
 
     body =
-      if is_atom(permission) and not is_nil(permission) do
-        mount_opts =
-          [permission: permission, entity_type: entity_type] ++
-            Keyword.take(opts, [:param, :entity_from])
-
+      if is_atom_present(permission) do
         # The app's own hooks (typically authentication) run before Edict's:
         # the mount hook resolves the user from socket assigns they set.
-        on_mount_hooks = List.wrap(on_mount) ++ [{Edict.LiveView, mount_opts}]
+        on_mount_hooks =
+          List.wrap(on_mount) ++ [{Edict.LiveView, guard_opts(entity_type, permission, opts)}]
 
         session = :"edict_#{entity_type}_#{permission}_#{System.unique_integer([:positive])}"
 
@@ -489,7 +467,7 @@ defmodule Edict.Router do
   def __live_mount_opts__({:edict, entity_type, block_opts}, path, config_module) do
     permission = block_opts[:permission]
 
-    unless is_atom(permission) and not is_nil(permission) do
+    unless is_atom_present(permission) do
       raise CompileError,
         description:
           "live route #{inspect(path)} requires the edict block's permission: " <>
@@ -517,7 +495,7 @@ defmodule Edict.Router do
          _block_permission,
          config_module
        )
-       when is_atom(route_permission) and not is_nil(route_permission) do
+       when is_atom_present(route_permission) do
     validate_pair!(config_module, entity_type, route_permission)
     route_permission
   end
@@ -529,7 +507,7 @@ defmodule Edict.Router do
          block_permission,
          config_module
        )
-       when is_atom(block_permission) and not is_nil(block_permission) do
+       when is_atom_present(block_permission) do
     validate_pair!(config_module, entity_type, block_permission)
     block_permission
   end
@@ -598,7 +576,7 @@ defmodule Edict.Router do
   end
 
   defp validate_edict_opts!(entity_type, opts, on_mount) do
-    unless is_atom(entity_type) and not is_nil(entity_type) do
+    unless is_atom_present(entity_type) do
       raise CompileError,
         description: "edict expects an entity type atom, got: #{Macro.to_string(entity_type)}"
     end
@@ -609,7 +587,7 @@ defmodule Edict.Router do
     end
 
     unless opts[:permission] == nil or
-             (is_atom(opts[:permission]) and not is_nil(opts[:permission])) do
+             is_atom_present(opts[:permission]) do
       raise CompileError,
         description:
           "edict permission: must be a permission atom, got: #{inspect(opts[:permission])}"
@@ -644,7 +622,7 @@ defmodule Edict.Router do
   defp on_mount_hook?(hooks) when is_list(hooks) and hooks != [],
     do: Enum.all?(hooks, &on_mount_hook?/1)
 
-  defp on_mount_hook?(module) when is_atom(module) and not is_nil(module), do: true
+  defp on_mount_hook?(module) when is_atom_present(module), do: true
   defp on_mount_hook?({module, _arg}) when is_atom(module), do: true
   defp on_mount_hook?(_), do: false
 

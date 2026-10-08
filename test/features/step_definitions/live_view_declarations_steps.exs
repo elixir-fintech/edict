@@ -74,7 +74,7 @@ defmodule Edict.Features.StepDefinitions.LiveViewDeclarationSteps do
 
     context
     |> Map.put(:audit_findings, findings)
-    |> Map.put(:audit_exit, Edict.Audit.exit_status(findings))
+    |> Map.put(:audit_failed, Edict.Audit.failed?(findings))
   end
 
   step ~r/^it reports "(?<event>\w+)" as undeclared and exits non-zero$/,
@@ -82,7 +82,7 @@ defmodule Edict.Features.StepDefinitions.LiveViewDeclarationSteps do
     [finding] = context.audit_findings
 
     assert finding.undeclared == [event]
-    assert context.audit_exit == {:shutdown, 1}
+    assert context.audit_failed == true
     context
   end
 

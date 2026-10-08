@@ -24,9 +24,10 @@ defmodule Mix.Tasks.Edict.Audit do
     findings = glob |> Edict.Audit.find_sources() |> Edict.Audit.scan_paths()
     print(findings)
 
-    case Edict.Audit.exit_status(findings) do
-      :ok -> :ok
-      {:shutdown, status} -> exit({:shutdown, status})
+    if Edict.Audit.failed?(findings) do
+      exit({:shutdown, 1})
+    else
+      :ok
     end
   end
 
@@ -52,7 +53,7 @@ defmodule Mix.Tasks.Edict.Audit do
         "dynamic event names are unverifiable, not failures"
     )
 
-    if Edict.Audit.exit_status(findings) == {:shutdown, 1} do
+    if Edict.Audit.failed?(findings) do
       shell.error("mix edict.audit found undeclared events")
     end
   end
