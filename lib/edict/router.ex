@@ -643,6 +643,16 @@ defmodule Edict.Router do
         description: "edict param: must be a string, got: #{inspect(opts[:param])}"
     end
 
+    # The guard calls entity_from as a function, and block options are stored
+    # at compile time: only a remote capture is both callable and storable. A
+    # tuple or local capture would compile and then raise on every request.
+    unless opts[:entity_from] == nil or remote_capture?(opts[:entity_from]) do
+      raise CompileError,
+        description:
+          "edict entity_from: must be a remote capture such as " <>
+            "&MyAppWeb.Ids.from_conn/1, got: #{Macro.to_string(opts[:entity_from])}"
+    end
+
     unless on_mount_hook?(on_mount) do
       raise CompileError,
         description:
@@ -660,6 +670,13 @@ defmodule Edict.Router do
             "edict got unknown options #{inspect(unknown)}. Valid options: #{inspect(@block_opts)}"
     end
   end
+
+  # &Module.fun/1, as AST: the module is an alias or an atom (erlang modules).
+  defp remote_capture?({:&, _, [{:/, _, [{{:., _, [module, fun]}, _, []}, 1]}]})
+       when is_atom(fun),
+       do: match?({:__aliases__, _, _}, module) or is_atom(module)
+
+  defp remote_capture?(_), do: false
 
   # nil (absent), a module, {module, arg}, or a list of those.
   defp on_mount_hook?(hooks) when is_nil(hooks) or hooks == [], do: true

@@ -8,6 +8,15 @@ defmodule Edict.Test.EchoPlug do
   def call(conn, _opts), do: Plug.Conn.send_resp(conn, 200, "ok")
 end
 
+defmodule Edict.Test.EntityIds do
+  @moduledoc """
+  A resolver for `entity_from:` router scenarios: block options need a
+  remote capture of a real function.
+  """
+
+  def project_id(conn), do: conn.params["project_id"]
+end
+
 defmodule Edict.Test.Identify do
   @moduledoc """
   Test auth plug: assigns `current_user` from the `x-test-user` header, the

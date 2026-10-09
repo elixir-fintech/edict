@@ -168,6 +168,46 @@ defmodule Edict.Features.StepDefinitions.RouteCompletenessSteps do
     Map.put(context, :compilation, {:ok, router})
   end
 
+  step "an edict block takes entity_from as a module and function tuple", context do
+    Map.put(
+      context,
+      :compilation,
+      RouterFactory.try_compile("""
+      edict :project, [entity_from: {Edict.Test.EntityIds, :project_id}] do
+        get "/things/:project_id", Edict.Test.EchoPlug, :show
+      end
+      """)
+    )
+  end
+
+  step "compilation fails instructing to pass a remote capture", context do
+    {:error, %CompileError{} = error} = context.compilation
+
+    assert error.description =~ "entity_from"
+    assert error.description =~ "remote capture"
+    context
+  end
+
+  step "an edict block takes entity_from as a remote capture", context do
+    Map.put(
+      context,
+      :compilation,
+      RouterFactory.try_compile("""
+      edict :project, [entity_from: &Edict.Test.EntityIds.project_id/1] do
+        get "/things/:project_id", Edict.Test.EchoPlug, :show
+      end
+      """)
+    )
+  end
+
+  step "the route is guarded with that resolver", context do
+    {:ok, router} = context.compilation
+    [guard] = router.__edict_routes__()
+
+    assert guard.guard[:entity_from] == (&Edict.Test.EntityIds.project_id/1)
+    context
+  end
+
   defp route_body, do: ~s|get "/outside", Edict.Test.EchoPlug, :show|
   defp live_body, do: ~s|live "/outside", Edict.Test.RouterLive|
 end
