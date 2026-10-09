@@ -7,7 +7,8 @@ defmodule Edict.Config do
       defmodule MyApp.AuthConfig do
         use Edict.Config
 
-        user_from_assigns fn assigns -> assigns.current_user.id end
+        # Optional; the default reads the Phoenix 1.8 scope:
+        user_from_assigns fn assigns -> assigns.current_scope.user.id end
 
         # Optional; these are the shipped defaults:
         permission_aliases [
@@ -105,8 +106,14 @@ defmodule Edict.Config do
   @doc """
   Sets how the user ID is read from conn or socket assigns.
 
-  Default: `fn assigns -> assigns.current_user.id end`, which raises when
-  `current_user` is missing or `nil`, so Edict must run after authentication.
+  Default: `fn assigns -> assigns.current_scope.user.id end`, matching the
+  `current_scope` that Phoenix 1.8's `mix phx.gen.auth` assigns. It raises when
+  `current_scope` is missing or `nil`, so Edict must run after authentication.
+
+  Apps whose authentication assigns `current_user` instead (Phoenix 1.7's
+  `phx.gen.auth`, or a hand-written plug) declare:
+
+      user_from_assigns fn assigns -> assigns.current_user.id end
   """
   defmacro user_from_assigns(func) do
     escaped = Macro.escape(func)
@@ -509,7 +516,7 @@ defmodule Edict.Config do
   defp merged_permission_aliases(aliases),
     do: Keyword.merge(@default_permission_aliases, aliases)
 
-  defp user_fn(nil), do: quote(do: fn assigns -> assigns.current_user.id end)
+  defp user_fn(nil), do: quote(do: fn assigns -> assigns.current_scope.user.id end)
   defp user_fn(user_from_assigns), do: user_from_assigns
 
   # Default on_unauthorized: 403 for Plug.Conn, redirect for LiveView.Socket

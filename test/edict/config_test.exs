@@ -62,6 +62,18 @@ defmodule Edict.ConfigTest do
       assigns = %{current_user: %{id: "user-123"}}
       assert Edict.Test.Config.user_id_from_assigns(assigns) == "user-123"
     end
+
+    # StrongConfig declares no user_from_assigns, so it runs the default.
+    test "defaults to the Phoenix 1.8 scope: current_scope.user.id" do
+      assigns = %{current_scope: %{user: %{id: "user-123"}}}
+      assert Edict.Test.StrongConfig.user_id_from_assigns(assigns) == "user-123"
+    end
+
+    test "the default raises when current_scope is not assigned" do
+      assigns = %{current_user: %{id: "user-123"}}
+
+      assert_raise KeyError, fn -> Edict.Test.StrongConfig.user_id_from_assigns(assigns) end
+    end
   end
 
   describe "on_unauthorized/0" do
