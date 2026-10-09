@@ -1,36 +1,38 @@
 defmodule Edict.Enforcement.Plug do
-  @moduledoc """
-  A Plug that enforces authorization.
-
-  Extracts the user ID from assigns, loads the authorization document from
-  cache (rebuilding if stale or missing), and checks the requested permission.
-  Strong permissions are checked against the database.
-
-  ## Options
-
-    * `:permission` — the permission atom to check (e.g., `:read`, `:write`)
-    * `:entity_type` — the entity type atom (e.g., `:project`)
-    * `:param` — the name of the request param holding the entity ID (e.g., `"project_id"`)
-    * `:entity_from` — used when `:param` is not given: a function `(conn -> entity_id)`.
-      Must be a remote capture (`&MyModule.fun/1`), since plug options are stored
-      at compile time and anonymous functions cannot be
-    * `:edict_config` — (optional) config map for this plug's check, mainly for tests.
-      It falls back to `conn.assigns[:edict_config]`, then `Edict.config/0`.
-      `Edict.can?` in templates always uses `Edict.config/0`
-
-  A missing param yields no entity ID, so the check fails and the request is unauthorized.
-
-  Strong permissions (see `Edict.Config.strong_permissions/1`) are always checked against
-  the database. The `:strong` option is rejected: only `Edict.can?` may opt out.
-
-  Missing `:permission`, `:entity_type`, or both `:param` and `:entity_from` raise
-  `ArgumentError` when the plug is initialized: at compile time with the default
-  `plug_init_mode: :compile`, or on the first request with `:runtime`.
-  A permission the config does not define for the entity type raises `ArgumentError`
-  on the request, instead of silently denying it.
-
-  The connection is always halted on denial, even if `on_unauthorized` does not halt it.
-  """
+  # Internal: the route guard Edict.Router pipes every edict route through.
+  # Not a supported entry point; routes are guarded with Edict.Router only.
+  #
+  # A Plug that enforces authorization.
+  #
+  # Extracts the user ID from assigns, loads the authorization document from
+  # cache (rebuilding if stale or missing), and checks the requested permission.
+  # Strong permissions are checked against the database.
+  #
+  # ## Options
+  #
+  #   * `:permission` — the permission atom to check (e.g., `:read`, `:write`)
+  #   * `:entity_type` — the entity type atom (e.g., `:project`)
+  #   * `:param` — the name of the request param holding the entity ID (e.g., `"project_id"`)
+  #   * `:entity_from` — used when `:param` is not given: a function `(conn -> entity_id)`.
+  #     Must be a remote capture (`&MyModule.fun/1`), since plug options are stored
+  #     at compile time and anonymous functions cannot be
+  #   * `:edict_config` — (optional) config map for this plug's check, mainly for tests.
+  #     It falls back to `conn.assigns[:edict_config]`, then `Edict.config/0`.
+  #     `Edict.can?` in templates always uses `Edict.config/0`
+  #
+  # A missing param yields no entity ID, so the check fails and the request is unauthorized.
+  #
+  # Strong permissions (see `Edict.Config.strong_permissions/1`) are always checked against
+  # the database. The `:strong` option is rejected: only `Edict.can?` may opt out.
+  #
+  # Missing `:permission`, `:entity_type`, or both `:param` and `:entity_from` raise
+  # `ArgumentError` when the plug is initialized: at compile time with the default
+  # `plug_init_mode: :compile`, or on the first request with `:runtime`.
+  # A permission the config does not define for the entity type raises `ArgumentError`
+  # on the request, instead of silently denying it.
+  #
+  # The connection is always halted on denial, even if `on_unauthorized` does not halt it.
+  @moduledoc false
 
   @behaviour Plug
 
@@ -51,38 +53,21 @@ defmodule Edict.Enforcement.Plug do
     Helpers.validate_permission!(edict_config.config_module, opts.permission, entity_type)
     entity_id = entity_id(opts, conn)
 
-    with {:ok, document} <- check(edict_config, user_id, opts.permission, entity_type, entity_id) do
-      conn
-      |> decide(:allow, opts, entity_id)
-      |> Plug.Conn.assign(:current_user_roles, document)
-    else
-      :denied ->
-        conn
-        |> decide(:deny, opts, entity_id)
-        |> unauthorized(edict_config.config_module)
-    end
-  end
-
-  defp check(edict_config, user_id, permission, entity_type, entity_id) do
     with user_id when is_binary(user_id) <- user_id,
          document = Helpers.load_document(edict_config, user_id),
          true <-
-           Helpers.authorized?(edict_config, document, permission, entity_type, entity_id, []) do
-      {:ok, document}
+           Helpers.authorized?(
+             edict_config,
+             document,
+             opts.permission,
+             entity_type,
+             entity_id,
+             []
+           ) do
+      Plug.Conn.assign(conn, :current_user_roles, document)
     else
-      _ -> :denied
+      _denied -> unauthorized(conn, edict_config.config_module)
     end
-  end
-
-  # The stamp records the decision: a declared-but-denied request keeps its
-  # denial, and Edict.Sentinel passes any stamped request through.
-  defp decide(conn, decision, opts, entity_id) do
-    Plug.Conn.put_private(conn, :edict, %{
-      decision: decision,
-      permission: opts.permission,
-      entity_type: opts.entity_type,
-      entity_id: entity_id
-    })
   end
 
   defp entity_id(%{param: param}, conn), do: conn.params[param]

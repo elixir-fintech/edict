@@ -43,14 +43,15 @@ defmodule Edict do
       Edict.can?(doc, :read, :project, "7")      # raw type + id
       Edict.can?(doc, :approve_transfer, @account, strong: false)  # cached, for display
 
-  In Plug and LiveView, the document is loaded automatically into
-  `assigns.current_user_roles` — use `can?/3` or `can?/4` directly in templates.
+  On routes guarded by `Edict.Router`, the document is loaded automatically
+  into `assigns.current_user_roles` — use `can?/3` or `can?/4` directly in
+  templates. Elsewhere, load it with `load_document/1`.
 
   ## Key modules
 
   - `Edict.Config` — DSL for defining entity types, roles, and permissions
-  - `Edict.Plug` — controller-level authorization
-  - `Edict.LiveView` — LiveView on_mount authorization
+  - `Edict.Router` — route guards: `edict` and `unguarded` blocks, the only
+    supported way to guard routes and LiveView mounts
   - `Edict.Enforcement.Authorize` — per-event authorization (`handle_event` hook)
   - `Edict.Multi` — role changes inside an `Ecto.Multi`, invalidated after commit
   - `Edict.Supervisor` — starts the cache and the cross-node listener
@@ -238,7 +239,7 @@ defmodule Edict do
   The only option is `strong: false`, which checks a strong permission against the
   document instead of the database; other options are ignored, and any other
   `:strong` value raises
-  `ArgumentError`. Unlike `Edict.Plug`, `Edict.LiveView` and `authorize`,
+  `ArgumentError`. Unlike route guards, LiveView mount checks and `authorize`,
   `can?` does not validate the permission: a permission the entity type does
   not define simply returns `false`.
   """

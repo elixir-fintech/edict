@@ -95,7 +95,11 @@ defmodule MyAppWeb.Router do
       get    "/projects/:project_id/billing", ProjectController, :billing, permission: :billing
     end
 
-    edict :project, param: "project_id", permission: :read do
+    # on_mount: your authentication hook, which runs before Edict's mount check
+    edict :project,
+      param: "project_id",
+      permission: :read,
+      on_mount: {MyAppWeb.UserAuth, :require_authenticated} do
       live "/projects/:project_id", ProjectShowLive
     end
 
@@ -112,41 +116,34 @@ end
 `use MyAppWeb, :router`). It re-imports Phoenix's route macros in wrapped form,
 so any route outside an `edict` or `unguarded` block fails compilation naming
 the route and both remedies — an unguarded route is a build failure, not a
-runtime hole. Routers that never `use Edict.Router` compile untouched.
+runtime hole. Routers that never `use Edict.Router` compile untouched, and
+their routes get no Edict guard.
+
+`Edict.Router` is the only supported way to guard routes and LiveView mounts.
+Code outside it — a bare `Plug.Router`, an API mounted outside the Phoenix
+router, background jobs — checks with `Edict.load_document/1` and `Edict.can?`.
 
 ### edict blocks
 
-Each route inside an `edict` block gets `Edict.Plug` with the block's entity
-type and ID source (`param:` or `entity_from:`). Controller routes derive
+Each route inside an `edict` block is guarded with the block's entity type and
+ID source (`param:` or `entity_from:`). Controller routes derive
 their permission from the Phoenix action name via
 [permission aliases](#permission-aliases); an unmapped name fails compilation.
 A per-route `permission:` option wins over the alias.
 
 Live routes have no action name to derive from, so a block carrying them must
 declare `permission:` — missing it fails compilation. The block becomes a
-`live_session` whose `on_mount` is `{Edict.LiveView, block options}`, so every
-live route inside mounts guarded, inheriting the block's permission. One block
-is one permission: split views needing different mount permissions into
-separate blocks.
+`live_session` that runs Edict's mount check after your `on_mount:` hooks, so
+every live route inside mounts guarded, inheriting the block's permission. One
+block is one permission: split views needing different mount permissions into
+separate blocks. A block `permission:` also guards controller routes whose
+action has no alias; when it contradicts an action's alias, compilation fails
+asking for an explicit route `permission:`.
 
 ### unguarded
 
 `unguarded` is the explicit opt-out for genuinely public routes — dashboards,
 health checks. It is the only one; there is no controller-level skip.
-
-### Sentinel as defense in depth
-
-```elixir
-pipeline :browser do
-  ...
-  plug Edict.Sentinel
-end
-```
-
-The sentinel denies, at response time, any request that never passed an Edict
-decision. For apps wiring `Edict.Plug` by hand it blocks only the response,
-not the handler's side effects — acceptable only as the second line behind the
-router compiler.
 
 ### Auditing LiveView events in CI
 
@@ -302,26 +299,11 @@ transaction.
 
 ## Checking permissions
 
-With `Edict.Router`, the router is the primary wiring point; this section shows
-the underlying plug and LiveView wiring the router generates (see
-[Default-on enforcement](#default-on-enforcement)).
+Routes and LiveView mounts are checked by the guards `Edict.Router` installs
+(see [Default-on enforcement](#default-on-enforcement)); LiveView events by
+`authorize`; templates and other code by `Edict.can?`.
 
-### In controllers (Plug)
-
-```elixir
-# In router
-pipeline :require_project_read do
-  plug Edict.Plug,
-    permission: :read,
-    entity_type: :project,
-    param: "project_id"
-end
-
-scope "/projects/:project_id" do
-  pipe_through [:browser, :require_auth, :require_project_read]
-  # routes...
-end
-```
+### Controller routes
 
 On success, the authorization document is stored in `conn.assigns.current_user_roles`.
 On denial, Edict calls `on_unauthorized` and then halts the connection itself. A missing
@@ -331,9 +313,9 @@ A permission the config does not define for the entity type (a typo such as `:ap
 `ArgumentError` instead of silently denying every request.
 
 `param:` names the request param holding the entity ID. When the ID needs custom extraction,
-pass `entity_from:` instead. Plug and `on_mount` options are stored at compile time, so it must
-be a remote capture such as `&MyAppWeb.ProjectIds.from_conn/1`; anonymous functions do not compile.
-The Plug calls it with the conn; `Edict.LiveView` calls it with the route params.
+pass `entity_from:` instead. Block options are stored at compile time, so it must be a remote
+capture such as `&MyAppWeb.ProjectIds.from_conn/1`; anonymous functions do not compile.
+Controller routes call it with the conn; live routes call it with the route params.
 
 By default a denied request gets a `403` "Forbidden" text response, and a denied LiveView
 is redirected to `/` (see `on_unauthorized` above). The default `user_from_assigns` reads
@@ -342,38 +324,29 @@ must run after authentication. On Phoenix 1.7, or with any authentication that a
 `current_user`, declare `user_from_assigns fn assigns -> assigns.current_user.id end` in your
 config; otherwise every guarded request raises a `KeyError` on `:current_scope`.
 
-### In LiveView (on_mount)
+### LiveView mounts
 
-```elixir
-defmodule MyAppWeb.ProjectLive.Show do
-  use MyAppWeb, :live_view
-
-  on_mount {Edict.LiveView,
-    permission: :read,
-    entity_type: :project,
-    param: "project_id"}
-
-  # ...
-end
-```
-
-On mount, the hook subscribes to the user's role change notifications (when the socket is connected), then loads the document into `socket.assigns.current_user_roles`. `authorize` guards and `Edict.can?` in templates read it from there.
+On mount, the check subscribes to the user's role change notifications (when the socket is connected), then loads the document into `socket.assigns.current_user_roles`. `authorize` guards and `Edict.can?` in templates read it from there.
 
 A denied mount calls `on_unauthorized`, which must redirect: LiveView raises on a halted mount without one.
 
-On each role change for the user, the hook reloads the document from the DB and re-runs the mount check. If the user lost access, `on_unauthorized` is called and must redirect the socket (`redirect` or `push_navigate`), which stops the LiveView. If it does not redirect, or only uses `push_patch`, which keeps the LiveView open, the LiveView raises, and the client's remount is denied. Role-change messages are handled by Edict and never reach your `handle_info/2`.
+On each role change for the user, the check reloads the document from the DB and re-runs. If the user lost access, `on_unauthorized` is called and must redirect the socket (`redirect` or `push_navigate`), which stops the LiveView. If it does not redirect, or only uses `push_patch`, which keeps the LiveView open, the LiveView raises, and the client's remount is denied. Role-change messages are handled by Edict and never reach your `handle_info/2`.
+
+**Guarded LiveViews must be routed.** A LiveView rendered with `live_render` — nested in
+another LiveView, or from a controller — skips the router's `live_session`, so it gets no
+mount check and no `current_user_roles`, and its `authorize` guards raise. Route every
+LiveView that needs guarding inside an `edict` block. A nested child stays unguarded by Edict:
+pass it what it needs from its guarded parent via `session:`, and for its own checks load a
+document with `Edict.load_document(user_id)` and use `Edict.can?`. That document is a
+snapshot with no role-change re-check, so re-check at the moment the child changes anything.
 
 ### Per-event authorization (LiveView)
 
 ```elixir
+# Routed in an edict block, whose mount check assigns current_user_roles
 defmodule MyAppWeb.ProjectLive.Show do
   use MyAppWeb, :live_view
   use Edict.Enforcement.Authorize
-
-  on_mount {Edict.LiveView,
-    permission: :read,
-    entity_type: :project,
-    param: "project_id"}
 
   # The module default: entity type and the assign holding its ID, once per view
   edict_entity :project, from: :project_id
@@ -394,7 +367,7 @@ defmodule MyAppWeb.ProjectLive.Show do
 end
 ```
 
-The guards need `on_mount {Edict.LiveView, ...}`, which assigns `current_user_roles`, and the LiveView must assign the key named by `entity_from_assigns:` itself. Without `current_user_roles`, a declared event fails closed: it raises, or is denied through
+The guards need `current_user_roles`, assigned by the mount check of the `edict` block routing the LiveView, and the LiveView must assign the key named by `entity_from_assigns:` itself. Without `current_user_roles`, a declared event fails closed: it raises, or is denied through
 `on_unauthorized` when the assigned entity ID is missing or empty. A missing entity assign on its
 own also means denial.
 
@@ -422,7 +395,7 @@ forms mix freely.
 
 `can?/3` uses the `Edict.Entity` protocol to extract type and ID from the struct. `can?/4` takes
 them directly (`can?(doc, permission, :project, "7")`), or a struct plus options; `can?/5` takes type,
-ID and options. Unlike the Plug and LiveView, `can?` does not validate the permission: a permission the
+ID and options. Unlike route guards and mount checks, `can?` does not validate the permission: a permission the
 entity type does not define returns `false`.
 
 ## Strong permissions
@@ -459,7 +432,7 @@ end
 and every listed permission must be granted by some role on that entity type,
 otherwise the config fails to compile.
 
-This applies to `Edict.Plug`, `Edict.LiveView` (on mount), `authorize` event guards, and
+This applies to route guards, LiveView mount checks, `authorize` event guards, and
 `Edict.can?`. Each strong check costs one indexed query. If the DB is unavailable, the check
 raises: a strong check never falls back to the cache.
 
@@ -487,8 +460,8 @@ Pair it with a strong check on the event itself:
 authorize "approve", permission: :approve_transfer, entity_from_assigns: :account_id, entity_type: :account
 ```
 
-`strong: false` is the only accepted value, and only `Edict.can?` accepts it. `Edict.Plug`,
-`Edict.LiveView` and `authorize` raise on a `:strong` option, so enforcement always follows the
+`strong: false` is the only accepted value, and only `Edict.can?` accepts it. Route guards,
+mount checks and `authorize` reject a `:strong` option, so enforcement always follows the
 config.
 
 ## How caching works

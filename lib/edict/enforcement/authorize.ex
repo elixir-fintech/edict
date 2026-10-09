@@ -4,15 +4,21 @@ defmodule Edict.Enforcement.Authorize do
 
   ## Usage
 
+  The LiveView is routed inside an `edict` block, whose mount check assigns
+  `current_user_roles` (see `Edict.Router`):
+
+      edict :project, param: "project_id", permission: :read do
+        live "/projects/:project_id", MyAppWeb.ProjectLive
+      end
+
+  The view declares its event guards:
+
       defmodule MyAppWeb.ProjectLive do
         use Phoenix.LiveView
         use Edict.Enforcement.Authorize
 
         # The module default: entity type and the assign holding its ID, once per view
         edict_entity :project, from: :project_id
-
-        # Assigns current_user_roles; the guards read it
-        on_mount {Edict.LiveView, permission: :read, entity_type: :project, param: "project_id"}
 
         def mount(%{"project_id" => project_id}, _session, socket) do
           # The guards read the entity ID from this assign
@@ -36,9 +42,11 @@ defmodule Edict.Enforcement.Authorize do
   never reaches it; undeclared events pass through. LiveComponents are not
   supported.
 
-  The guards need two assigns: `current_user_roles`, set by `on_mount
-  {Edict.LiveView, ...}`, and the key named by `:entity_from_assigns` (for
-  example `:project_id`), which the LiveView assigns itself. Without
+  The guards need two assigns: `current_user_roles`, set by the mount check
+  of the `edict` block routing the LiveView, and the key named by
+  `:entity_from_assigns` (for example `:project_id`), which the LiveView
+  assigns itself. A LiveView that is not routed in an `edict` block has no
+  `current_user_roles`. Without
   `current_user_roles` a declared event fails closed: it raises, or is denied
   through `on_unauthorized` when the assigned key holds no valid entity ID. The config
   comes from `socket.assigns[:edict_config]`, falling back to `Edict.config/0`.

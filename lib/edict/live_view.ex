@@ -1,16 +1,7 @@
 defmodule Edict.LiveView do
-  @moduledoc """
-  Convenience alias for `Edict.Enforcement.LiveView`.
+  # Internal: the name Edict.Router wires, delegating to Edict.Enforcement.LiveView.
+  @moduledoc false
 
-  ## Usage
-
-      on_mount {Edict.LiveView,
-        permission: :read,
-        entity_type: :project,
-        param: "project_id"}
-  """
-
-  @doc "See `Edict.Enforcement.LiveView.on_mount/4`."
   @spec on_mount(keyword() | map(), map(), map(), Phoenix.LiveView.Socket.t()) ::
           {:cont | :halt, Phoenix.LiveView.Socket.t()}
   defdelegate on_mount(opts, params, session, socket), to: Edict.Enforcement.LiveView

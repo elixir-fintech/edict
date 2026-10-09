@@ -95,7 +95,8 @@ defmodule Edict.Enforcement.Helpers do
     raise ArgumentError,
           "cannot check #{inspect(permission)} on #{inspect(entity_type)} #{inspect(entity_id)} " <>
             "without an authorization document: current_user_roles is not assigned. " <>
-            "Load it with Edict.Plug or on_mount {Edict.LiveView, ...}"
+            "Route the LiveView or controller in an edict block (Edict.Router), or " <>
+            "load it with Edict.load_document/1"
   end
 
   def authorized?(edict_config, document, permission, entity_type, entity_id, opts) do
@@ -174,7 +175,7 @@ defmodule Edict.Enforcement.Helpers do
   end
 
   @doc """
-  Validates `Edict.Plug` and `Edict.LiveView` options up front.
+  Validates the route guard and mount check options up front.
 
   Requires `:permission`, `:entity_type`, and `:param` or `:entity_from`, and
   rejects `:strong`.

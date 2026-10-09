@@ -63,13 +63,7 @@ defmodule Edict.MixProject do
       groups_for_modules: [
         "Public API": [Edict],
         Configuration: [Edict.Config, Edict.Entity],
-        Enforcement: [
-          Edict.Plug,
-          Edict.LiveView,
-          Edict.Enforcement.Plug,
-          Edict.Enforcement.LiveView,
-          Edict.Enforcement.Authorize
-        ],
+        Enforcement: [Edict.Router, Edict.Enforcement.Authorize],
         Cache: [Edict.Cache.Document, Edict.Cache.Store, Edict.Cache.PubSubListener],
         Testing: [Edict.TestHelpers]
       ]

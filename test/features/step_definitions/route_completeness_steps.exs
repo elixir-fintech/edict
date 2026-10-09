@@ -43,15 +43,21 @@ defmodule Edict.Features.StepDefinitions.RouteCompletenessSteps do
     |> Map.put(:request_path, "/health")
   end
 
-  # "any user requests that route" is shared with sentinel.feature; defined
-  # once, in sentinel_steps.exs.
+  step "any user requests that route", context do
+    Map.put(
+      context,
+      :conn,
+      RouterFactory.request_as(context.router, context.request_path, "carol")
+    )
+  end
 
   step "the request passes without an Edict decision", context do
     conn = context.conn
 
     assert conn.status == 200
-    # A declaration stamp is not a decision: nothing allowed or denied here.
-    assert conn.private[:edict][:decision] == nil
+    # An unguarded route runs no Edict code at request time: nothing is
+    # decided, and nothing is stamped on the conn.
+    assert conn.private[:edict] == nil
     context
   end
 
