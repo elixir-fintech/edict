@@ -293,7 +293,8 @@ defmodule Edict.IntegrationTest do
       conn =
         Plug.Test.conn(:post, "/accounts/7/approve", %{})
         |> Map.put(:params, %{"id" => "7"})
-        |> Plug.Conn.assign(:current_user, %{id: "alice"})
+        # StrongConfig uses the default user_from_assigns: the Phoenix 1.8 scope
+        |> Plug.Conn.assign(:current_scope, %{user: %{id: "alice"}})
 
       result = EdictPlug.call(conn, opts)
 
@@ -304,7 +305,8 @@ defmodule Edict.IntegrationTest do
     test "LiveView mount halts on a strong permission revoked in the DB", %{
       strong_config: strong_config
     } do
-      socket = build_socket(%{current_user: %{id: "alice"}})
+      # StrongConfig uses the default user_from_assigns: the Phoenix 1.8 scope
+      socket = build_socket(%{current_scope: %{user: %{id: "alice"}}})
 
       opts = %{
         edict_config: strong_config,

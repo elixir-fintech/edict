@@ -3,7 +3,7 @@ defmodule Edict.Cache.Document do
   The cached authorization document for a user.
 
   Stores the user's roles grouped by entity (type + ID).
-  Actions are not resolved here — they are resolved at check time
+  Permissions are not resolved here — they are resolved at check time
   using the Config module.
   """
 

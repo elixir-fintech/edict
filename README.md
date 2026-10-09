@@ -167,8 +167,9 @@ Create a config module using the `Edict.Config` DSL:
 defmodule MyApp.AuthConfig do
   use Edict.Config
 
-  # Optional: customize how user ID is extracted from assigns
-  # Default: fn assigns -> assigns.current_user.id end
+  # Optional: customize how the user ID is read from assigns.
+  # Default (Phoenix 1.8 phx.gen.auth): fn assigns -> assigns.current_scope.user.id end
+  # Phoenix 1.7 phx.gen.auth, or any auth that assigns current_user:
   user_from_assigns fn assigns -> assigns.current_user.id end
 
   # Optional: customize unauthorized behavior for Plug and LiveView.
@@ -336,7 +337,10 @@ The Plug calls it with the conn; `Edict.LiveView` calls it with the route params
 
 By default a denied request gets a `403` "Forbidden" text response, and a denied LiveView
 is redirected to `/` (see `on_unauthorized` above). The default `user_from_assigns` reads
-`assigns.current_user.id`, so Edict must run after authentication.
+`assigns.current_scope.user.id`, the scope Phoenix 1.8's `mix phx.gen.auth` assigns, so Edict
+must run after authentication. On Phoenix 1.7, or with any authentication that assigns
+`current_user`, declare `user_from_assigns fn assigns -> assigns.current_user.id end` in your
+config; otherwise every guarded request raises a `KeyError` on `:current_scope`.
 
 ### In LiveView (on_mount)
 
