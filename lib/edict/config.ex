@@ -182,7 +182,7 @@ defmodule Edict.Config do
   @doc """
   Declares permissions that are always checked against the database.
 
-  `Edict.Plug`, `Edict.LiveView` and `authorize` guards always check them
+  Route guards, LiveView mount checks and `authorize` guards always check them
   against the database. Only `Edict.can?` may opt out with `strong: false`,
   for display checks. (`Edict.Enforcement.Helpers.can?/5` reads only a document
   it is given and ignores strong permissions; enforcement does not use it.)

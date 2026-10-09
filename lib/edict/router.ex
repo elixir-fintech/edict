@@ -37,7 +37,10 @@ defmodule Edict.Router do
   `edict entity_type, opts do ... end` guards every route inside. Options:
 
     * `:param` / `:entity_from` — where the entity ID comes from; one of them
-      is required, and `Edict.Plug` rejects the route without it
+      is required. `:entity_from` must be a remote capture
+      (`&MyAppWeb.Ids.from_conn/1`): block options are stored at compile
+      time, so anonymous functions do not compile. Controller routes call it
+      with the conn, live routes with the route params
     * `:permission` — required when the block declares `live` routes, which
       have no action name to derive from; every live route in the block
       inherits it. It also guards controller routes whose action has no
@@ -50,16 +53,24 @@ defmodule Edict.Router do
 
   Controller routes derive their permission from the Phoenix action name via
   the config's `permission_alias/1`, or declare their own with a per-route
-  `permission:` option, which wins over the alias. Each gets `Edict.Plug`
-  with the resolved options.
+  `permission:` option, which wins over the alias. Each gets Edict's route
+  guard with the resolved options; on success the user's document is
+  assigned as `conn.assigns.current_user_roles`.
 
-  Live routes are wrapped in a `live_session` whose `on_mount` is
-  `{Edict.LiveView, block options}` — the existing mount hook, so strong
-  permissions, version-bump re-checks and `current_user_roles` behave exactly
-  as today. The block *is* the live session: one block, one permission, one
-  session; do not nest `live_session` inside it. A block-level declaration
-  plug stamps the conn (see `Edict.Router.Declaration`) so a response-time
-  sentinel can tell declared live routes from undeclared requests.
+  Live routes are wrapped in a `live_session` whose `on_mount` runs Edict's
+  mount hook with the block options: it checks the permission, assigns
+  `current_user_roles` for `Edict.Enforcement.Authorize` guards and
+  `Edict.can?`, and re-runs the check on every role change for the user
+  (`on_unauthorized` must then redirect the socket). The block *is* the live
+  session: one block, one permission, one session; do not nest
+  `live_session` inside it.
+
+  Routing is the only supported way to guard a LiveView. A LiveView rendered
+  with `live_render` (nested, or from a controller) gets no mount check and
+  no `current_user_roles`, so its `authorize` guards raise; such children
+  use `Edict.load_document/1` and `Edict.can?` instead. The role-change
+  re-check runs only on the node that receives the version bump, so guard
+  every event that performs a protected operation with `authorize`.
 
   ## Compile-time validation
 
@@ -140,10 +151,7 @@ defmodule Edict.Router do
         quote do
           Phoenix.LiveView.Router.live_session unquote(session),
             on_mount: unquote(on_mount_hooks) do
-            scope [] do
-              pipe_through([{Edict.Router.Declaration, [declaration: :edict]}])
-              unquote(block)
-            end
+            unquote(block)
           end
         end
       else
@@ -176,10 +184,7 @@ defmodule Edict.Router do
 
       Module.put_attribute(__MODULE__, :edict_route_context, :unguarded)
 
-      scope [] do
-        pipe_through([{Edict.Router.Declaration, [declaration: :unguarded]}])
-        unquote(block)
-      end
+      unquote(block)
 
       Module.put_attribute(__MODULE__, :edict_route_context, nil)
     end
@@ -406,7 +411,7 @@ defmodule Edict.Router do
           raise CompileError,
             description:
               "forward inside an edict block would delegate a whole sub-tree that " <>
-                "Edict.Plug cannot guard. Wrap it in unguarded; the sub-router " <>
+                "an edict guard cannot check. Wrap it in unguarded; the sub-router " <>
                 "enforces its own routes when it uses Edict.Router"
       end
     end
