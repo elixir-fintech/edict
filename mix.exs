@@ -42,7 +42,9 @@ defmodule Edict.MixProject do
       {:postgrex, ">= 0.0.0", only: :test},
       {:cucumber, "~> 1.0", only: :test},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.16", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -61,13 +63,7 @@ defmodule Edict.MixProject do
       groups_for_modules: [
         "Public API": [Edict],
         Configuration: [Edict.Config, Edict.Entity],
-        Enforcement: [
-          Edict.Plug,
-          Edict.LiveView,
-          Edict.Enforcement.Plug,
-          Edict.Enforcement.LiveView,
-          Edict.Enforcement.Authorize
-        ],
+        Enforcement: [Edict.Router, Edict.Enforcement.Authorize],
         Cache: [Edict.Cache.Document, Edict.Cache.Store, Edict.Cache.PubSubListener],
         Testing: [Edict.TestHelpers]
       ]

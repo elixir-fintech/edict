@@ -11,12 +11,12 @@ defmodule Edict.Features.StepDefinitions.PlugSteps do
 
   step "the plug guards {string} on {string} from param {string}",
        %{
-         args: [action, entity, param]
+         args: [permission, entity, param]
        } = context do
     opts =
       EdictPlug.init(
         edict_config: context.project_config,
-        action: String.to_existing_atom(action),
+        permission: String.to_existing_atom(permission),
         entity_type: String.to_existing_atom(entity),
         param: param
       )
@@ -45,13 +45,13 @@ defmodule Edict.Features.StepDefinitions.PlugSteps do
     Map.put(context, :conn, run_plug(context, nil, %{context.plug_param => id}))
   end
 
-  step "{word} requests the project {string} page for action {string}",
-       %{args: [user, id, action]} = context do
+  step "{word} requests the project {string} page for permission {string}",
+       %{args: [user, id, permission]} = context do
     outcome =
       try do
         # The typo must not exist as an atom, so String.to_atom/1 is deliberate.
         run_plug(
-          %{context | plug_opts: %{context.plug_opts | action: String.to_atom(action)}},
+          %{context | plug_opts: %{context.plug_opts | permission: String.to_atom(permission)}},
           user_id(user),
           %{context.plug_param => id}
         )

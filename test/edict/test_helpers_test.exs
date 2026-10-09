@@ -51,7 +51,7 @@ defmodule Edict.TestHelpersTest do
     end
   end
 
-  describe "assert_can/3 with a strong action" do
+  describe "assert_can/3 with a strong permission" do
     test "reports the roles found in the database" do
       Application.put_env(:edict, :config_module, Edict.Test.StrongConfig)
       account = %Edict.Test.Account{id: "7"}

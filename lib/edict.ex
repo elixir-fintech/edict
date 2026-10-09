@@ -4,8 +4,8 @@ defmodule Edict do
 
   Edict maintains a per-user authorization document in an ETS-backed cache.
   Permission checks read the cached document without a database query; a stale
-  or missing document is rebuilt from the database, and strong actions (see
-  `Edict.Config.strong_actions/1`) are checked against it unless a display
+  or missing document is rebuilt from the database, and strong permissions (see
+  `Edict.Config.strong_permissions/1`) are checked against it unless a display
   check opts out. Documents are automatically invalidated when roles change, with
   cross-node support via Phoenix.PubSub.
 
@@ -43,14 +43,15 @@ defmodule Edict do
       Edict.can?(doc, :read, :project, "7")      # raw type + id
       Edict.can?(doc, :approve_transfer, @account, strong: false)  # cached, for display
 
-  In Plug and LiveView, the document is loaded automatically into
-  `assigns.current_user_roles` — use `can?/3` or `can?/4` directly in templates.
+  On routes guarded by `Edict.Router`, the document is loaded automatically
+  into `assigns.current_user_roles` — use `can?/3` or `can?/4` directly in
+  templates. Elsewhere, load it with `load_document/1`.
 
   ## Key modules
 
-  - `Edict.Config` — DSL for defining entity types, roles, and actions
-  - `Edict.Plug` — controller-level authorization
-  - `Edict.LiveView` — LiveView on_mount authorization
+  - `Edict.Config` — DSL for defining entity types, roles, and permissions
+  - `Edict.Router` — route guards: `edict` and `unguarded` blocks, the only
+    supported way to guard routes and LiveView mounts
   - `Edict.Enforcement.Authorize` — per-event authorization (`handle_event` hook)
   - `Edict.Multi` — role changes inside an `Ecto.Multi`, invalidated after commit
   - `Edict.Supervisor` — starts the cache and the cross-node listener
@@ -196,12 +197,12 @@ defmodule Edict do
   @doc """
   Check permission using an entity struct (via Edict.Entity protocol).
 
-  Strong actions are checked against the database. Pass `strong: false` to
+  Strong permissions are checked against the database. Pass `strong: false` to
   check the document instead, for example to show or hide a button.
   """
   @spec can?(Document.t(), atom(), struct()) :: boolean()
-  def can?(document, action, entity) when is_struct(entity),
-    do: can?(document, action, entity, [])
+  def can?(document, permission, entity) when is_struct(entity),
+    do: can?(document, permission, entity, [])
 
   @doc """
   Check permission with an entity struct and options, or with a raw entity
@@ -213,38 +214,38 @@ defmodule Edict do
   """
   @spec can?(Document.t(), atom(), struct(), keyword()) :: boolean()
   @spec can?(Document.t(), atom(), atom(), term()) :: boolean()
-  def can?(document, action, entity, opts) when is_struct(entity) and is_list(opts) do
+  def can?(document, permission, entity, opts) when is_struct(entity) and is_list(opts) do
     entity_type = Edict.Entity.entity_type(entity)
     entity_id = Edict.Entity.entity_id(entity)
-    can?(document, action, entity_type, entity_id, opts)
+    can?(document, permission, entity_type, entity_id, opts)
   end
 
   # A keyword list here is options passed in place of the entity ID. A request
   # param is never a list with atom keys, so an array param still reaches the
   # clause below and is denied.
-  def can?(_document, _action, entity_type, [{key, _value} | _])
+  def can?(_document, _permission, entity_type, [{key, _value} | _])
       when is_atom(entity_type) and is_atom(key) do
     raise ArgumentError,
           "Edict.can?/4 got options where the entity ID belongs; " <>
             "pass the entity ID, then options"
   end
 
-  def can?(document, action, entity_type, entity_id) when is_atom(entity_type),
-    do: can?(document, action, entity_type, entity_id, [])
+  def can?(document, permission, entity_type, entity_id) when is_atom(entity_type),
+    do: can?(document, permission, entity_type, entity_id, [])
 
   @doc """
   Check permission using entity_type and entity_id directly, with options.
 
-  The only option is `strong: false`, which checks a strong action against the
+  The only option is `strong: false`, which checks a strong permission against the
   document instead of the database; other options are ignored, and any other
   `:strong` value raises
-  `ArgumentError`. Unlike `Edict.Plug`, `Edict.LiveView` and `authorize`,
-  `can?` does not validate the action: an action the entity type does not
-  define simply returns `false`.
+  `ArgumentError`. Unlike route guards, LiveView mount checks and `authorize`,
+  `can?` does not validate the permission: a permission the entity type does
+  not define simply returns `false`.
   """
   @spec can?(Document.t(), atom(), atom(), term(), keyword()) :: boolean()
-  def can?(document, action, entity_type, entity_id, opts) do
-    Helpers.authorized?(config(), document, action, entity_type, entity_id, opts)
+  def can?(document, permission, entity_type, entity_id, opts) do
+    Helpers.authorized?(config(), document, permission, entity_type, entity_id, opts)
   end
 
   # --- Document Loading ---
@@ -276,9 +277,10 @@ defmodule Edict do
       {:entity_types, 0},
       {:valid_entity_type?, 1},
       {:valid_role?, 1},
-      {:valid_action?, 2},
-      {:actions_for, 2},
-      {:strong_action?, 1},
+      {:valid_permission?, 2},
+      {:permissions_for, 2},
+      {:strong_permission?, 2},
+      {:permission_alias, 1},
       {:user_id_from_assigns, 1},
       {:on_unauthorized, 0}
     ]

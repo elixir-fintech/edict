@@ -4,7 +4,7 @@ defmodule Edict.Enforcement.Helpers do
 
   `can?/4` and `can?/5` read only the given document: no cache or DB hit.
   `authorized?/6` is what enforcement and `Edict.can?` use. It checks strong
-  actions against the DB and everything else against the document. Action resolution happens
+  permissions against the DB and everything else against the document. Permission resolution happens
   at check time using the config module.
   """
 
@@ -78,36 +78,37 @@ defmodule Edict.Enforcement.Helpers do
   end
 
   @doc """
-  Checks a permission, reading the DB for strong actions.
+  Checks a permission, reading the DB for strong permissions.
 
-  A strong action (`strong_action?/1` on the config module) is checked
-  against the user's current rows for the entity, never against the cache,
-  unless `opts` contains `strong: false`. Every other action is checked
-  against `document`. Only a non-empty string or an integer is an entity ID;
-  anything else is denied without a DB query. A `nil` document is accepted only
-  for such an invalid ID; with a valid one it raises `ArgumentError`, so a
-  missing `current_user_roles` never grants.
+  A strong permission (`strong_permission?/2` on the config module, scoped per
+  entity type) is checked against the user's current rows for the entity,
+  never against the cache, unless `opts` contains `strong: false`. Every other
+  permission is checked against `document`. Only a non-empty string or an
+  integer is an entity ID; anything else is denied without a DB query. A `nil`
+  document is accepted only for such an invalid ID; with a valid one it raises
+  `ArgumentError`, so a missing `current_user_roles` never grants.
   """
   @spec authorized?(map(), Document.t() | nil, atom(), atom(), term(), Enumerable.t()) ::
           boolean()
-  def authorized?(_edict_config, nil, action, entity_type, entity_id, _opts)
+  def authorized?(_edict_config, nil, permission, entity_type, entity_id, _opts)
       when is_entity_id(entity_id) do
     raise ArgumentError,
-          "cannot check #{inspect(action)} on #{inspect(entity_type)} #{inspect(entity_id)} " <>
+          "cannot check #{inspect(permission)} on #{inspect(entity_type)} #{inspect(entity_id)} " <>
             "without an authorization document: current_user_roles is not assigned. " <>
-            "Load it with Edict.Plug or on_mount {Edict.LiveView, ...}"
+            "Route the LiveView or controller in an edict block (Edict.Router), or " <>
+            "load it with Edict.load_document/1"
   end
 
-  def authorized?(edict_config, document, action, entity_type, entity_id, opts) do
+  def authorized?(edict_config, document, permission, entity_type, entity_id, opts) do
     opts = strong_opts!(opts)
     config_module = edict_config.config_module
 
     document =
-      if strong_check?(config_module, action, entity_id, opts),
+      if strong_check?(config_module, permission, entity_type, entity_id, opts),
         do: fresh_document(edict_config, document.user_id, entity_type, entity_id),
         else: document
 
-    can?(document, action, entity_type, entity_id, config_module)
+    can?(document, permission, entity_type, entity_id, config_module)
   end
 
   @doc """
@@ -145,15 +146,15 @@ defmodule Edict.Enforcement.Helpers do
   end
 
   @doc """
-  Raises `ArgumentError` unless the config defines `action` for `entity_type`.
+  Raises `ArgumentError` unless the config defines `permission` for `entity_type`.
 
   A typo such as `:aprove` would otherwise deny every request silently.
   """
-  @spec validate_action!(module(), atom(), atom()) :: :ok
-  def validate_action!(config_module, action, entity_type) do
-    unless config_module.valid_action?(action, entity_type) do
+  @spec validate_permission!(module(), atom(), atom()) :: :ok
+  def validate_permission!(config_module, permission, entity_type) do
+    unless config_module.valid_permission?(permission, entity_type) do
       raise ArgumentError,
-            "unknown action #{inspect(action)} for entity type #{inspect(entity_type)}"
+            "unknown permission #{inspect(permission)} for entity type #{inspect(entity_type)}"
     end
 
     :ok
@@ -163,7 +164,7 @@ defmodule Edict.Enforcement.Helpers do
   Raises `ArgumentError` unless `opts` contains every key in `keys`.
 
   A security declaration must be explicit: a default could silently guard
-  the wrong action or resource.
+  the wrong permission or resource.
   """
   @spec require_options!(Enumerable.t(), [atom()], String.t()) :: :ok
   def require_options!(opts, keys, owner) do
@@ -174,15 +175,15 @@ defmodule Edict.Enforcement.Helpers do
   end
 
   @doc """
-  Validates `Edict.Plug` and `Edict.LiveView` options up front.
+  Validates the route guard and mount check options up front.
 
-  Requires `:action`, `:entity_type`, and `:param` or `:entity_from`, and
+  Requires `:permission`, `:entity_type`, and `:param` or `:entity_from`, and
   rejects `:strong`.
   """
   @spec validate_enforcement_opts!(Enumerable.t(), String.t()) :: :ok
   def validate_enforcement_opts!(opts, owner) do
     reject_strong!(opts)
-    require_options!(opts, [:action, :entity_type], owner)
+    require_options!(opts, [:permission, :entity_type], owner)
 
     unless has_option?(opts, :param) or has_option?(opts, :entity_from) do
       raise ArgumentError, "#{owner} requires the :param or :entity_from option"
@@ -197,26 +198,26 @@ defmodule Edict.Enforcement.Helpers do
   Raises `ArgumentError` if `opts` contains `:strong`.
 
   Enforcement (Plug, LiveView mount, `authorize` events) always follows
-  `strong_actions`; only `Edict.can?` may opt out, for display checks.
+  `strong_permissions`; only `Edict.can?` may opt out, for display checks.
   """
   @spec reject_strong!(Enumerable.t()) :: :ok
   def reject_strong!(opts) do
     if has_option?(opts, :strong) do
       raise ArgumentError,
             "the :strong option is only accepted by Edict.can?; " <>
-              "enforcement always follows strong_actions"
+              "enforcement always follows strong_permissions"
     end
 
     :ok
   end
 
   # An invalid entity ID is denied by can?/5, so it never needs a DB read.
-  defp strong_check?(_config_module, _action, entity_id, _opts)
+  defp strong_check?(_config_module, _permission, _entity_type, entity_id, _opts)
        when not is_entity_id(entity_id),
        do: false
 
-  defp strong_check?(config_module, action, _entity_id, opts),
-    do: config_module.strong_action?(action) and opts != [strong: false]
+  defp strong_check?(config_module, permission, entity_type, _entity_id, opts),
+    do: config_module.strong_permission?(permission, entity_type) and opts != [strong: false]
 
   # Only this entity's rows, straight from the DB: a strong check never trusts
   # the cache and never writes to it.
@@ -235,33 +236,33 @@ defmodule Edict.Enforcement.Helpers do
   @doc """
   Check permission using an entity struct (via Edict.Entity protocol).
 
-  Reads only `document` and ignores strong actions; enforcement uses
+  Reads only `document` and ignores strong permissions; enforcement uses
   `authorized?/6`.
   """
   @spec can?(Document.t(), atom(), struct(), module()) :: boolean()
-  def can?(document, action, entity, config_module) when is_struct(entity) do
+  def can?(document, permission, entity, config_module) when is_struct(entity) do
     entity_type = Edict.Entity.entity_type(entity)
     entity_id = Edict.Entity.entity_id(entity)
-    can?(document, action, entity_type, entity_id, config_module)
+    can?(document, permission, entity_type, entity_id, config_module)
   end
 
   @doc """
   Check permission using entity_type and entity_id directly.
 
-  Reads only `document` and ignores strong actions; enforcement uses
+  Reads only `document` and ignores strong permissions; enforcement uses
   `authorized?/6`. Only a non-empty string or an integer is an entity ID:
   anything else, such as `nil`, `""` or an array request param, is denied.
   """
   @spec can?(Document.t(), atom(), atom(), term(), module()) :: boolean()
-  def can?(_document, _action, _entity_type, entity_id, _config_module)
+  def can?(_document, _permission, _entity_type, entity_id, _config_module)
       when not is_entity_id(entity_id),
       do: false
 
-  def can?(document, action, entity_type, entity_id, config_module) do
+  def can?(document, permission, entity_type, entity_id, config_module) do
     roles = Document.roles_for(document, entity_type, to_string(entity_id))
 
     Enum.any?(roles, fn role ->
-      action in config_module.actions_for(role, entity_type)
+      permission in config_module.permissions_for(role, entity_type)
     end)
   end
 end

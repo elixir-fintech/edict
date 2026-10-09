@@ -8,9 +8,23 @@ defmodule Edict.Enforcement.AuthorizeTest do
     use Phoenix.LiveView
     use Edict.Enforcement.Authorize
 
-    authorize("delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project)
-    authorize("update", action: :write, entity_from_assigns: :project_id, entity_type: :project)
-    authorize("typo", action: :aprove, entity_from_assigns: :project_id, entity_type: :project)
+    authorize("delete",
+      permission: :delete,
+      entity_from_assigns: :project_id,
+      entity_type: :project
+    )
+
+    authorize("update",
+      permission: :write,
+      entity_from_assigns: :project_id,
+      entity_type: :project
+    )
+
+    authorize("typo",
+      permission: :aprove,
+      entity_from_assigns: :project_id,
+      entity_type: :project
+    )
 
     def render(assigns), do: ~H""
 
@@ -72,7 +86,7 @@ defmodule Edict.Enforcement.AuthorizeTest do
     refute result.redirected
   end
 
-  test "an event guard raises for an action the entity type does not define", %{
+  test "an event guard raises for a permission the entity type does not define", %{
     edict_config: edict_config,
     admin_doc: admin_doc
   } do
@@ -82,8 +96,8 @@ defmodule Edict.Enforcement.AuthorizeTest do
     assert_raise ArgumentError, ~r/:aprove/, fn -> run_hook("typo", socket) end
   end
 
-  test "authorize without :action fails to compile" do
-    assert_raise ArgumentError, ~r/:action/, fn ->
+  test "authorize without :permission fails to compile" do
+    assert_raise ArgumentError, ~r/:permission/, fn ->
       compile_authorize(
         ~s|authorize("delete", entity_from_assigns: :project_id, entity_type: :project)|
       )
@@ -92,14 +106,14 @@ defmodule Edict.Enforcement.AuthorizeTest do
 
   test "authorize without :entity_from_assigns fails to compile" do
     assert_raise ArgumentError, ~r/:entity_from_assigns/, fn ->
-      compile_authorize(~s|authorize("delete", action: :delete, entity_type: :project)|)
+      compile_authorize(~s|authorize("delete", permission: :delete, entity_type: :project)|)
     end
   end
 
   test "authorize without :entity_type fails to compile" do
     assert_raise ArgumentError, ~r/:entity_type/, fn ->
       compile_authorize(
-        ~s|authorize("delete", action: :delete, entity_from_assigns: :project_id)|
+        ~s|authorize("delete", permission: :delete, entity_from_assigns: :project_id)|
       )
     end
   end
@@ -107,7 +121,7 @@ defmodule Edict.Enforcement.AuthorizeTest do
   test "authorize with strong: true fails to compile" do
     assert_raise ArgumentError, ~r/:strong/, fn ->
       compile_authorize(
-        ~s|authorize("delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project, strong: true)|
+        ~s|authorize("delete", permission: :delete, entity_from_assigns: :project_id, entity_type: :project, strong: true)|
       )
     end
   end
@@ -115,7 +129,7 @@ defmodule Edict.Enforcement.AuthorizeTest do
   test "authorize with strong: false fails to compile" do
     assert_raise ArgumentError, ~r/Edict\.can\?/, fn ->
       compile_authorize(
-        ~s|authorize("delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project, strong: false)|
+        ~s|authorize("delete", permission: :delete, entity_from_assigns: :project_id, entity_type: :project, strong: false)|
       )
     end
   end
@@ -135,7 +149,7 @@ defmodule Edict.Enforcement.AuthorizeTest do
   test "a non-string event name fails to compile" do
     assert_raise CompileError, ~r/string/, fn ->
       compile_authorize(
-        ~s|authorize(:delete, action: :delete, entity_from_assigns: :project_id, entity_type: :project)|
+        ~s|authorize(:delete, permission: :delete, entity_from_assigns: :project_id, entity_type: :project)|
       )
     end
   end
@@ -143,8 +157,8 @@ defmodule Edict.Enforcement.AuthorizeTest do
   test "declaring an event twice fails to compile" do
     assert_raise CompileError, ~r/more than once/, fn ->
       compile_authorize("""
-      authorize("delete", action: :delete, entity_from_assigns: :project_id, entity_type: :project)
-      authorize("delete", action: :write, entity_from_assigns: :project_id, entity_type: :project)
+      authorize("delete", permission: :delete, entity_from_assigns: :project_id, entity_type: :project)
+      authorize("delete", permission: :write, entity_from_assigns: :project_id, entity_type: :project)
       """)
     end
   end
@@ -156,6 +170,87 @@ defmodule Edict.Enforcement.AuthorizeTest do
         use Edict.Enforcement.Authorize
       end
       """)
+    end
+  end
+
+  describe "edict_entity and authorize overloads" do
+    test "authorize with a permission atom uses the edict_entity default" do
+      module =
+        compile_authorize_module("""
+        edict_entity :project, from: :project_id
+        authorize "delete", :delete
+        """)
+
+      assert module.__edict_authorizations__() == %{"delete" => {:delete, :project_id, :project}}
+    end
+
+    test "a list of events shares one declaration" do
+      module =
+        compile_authorize_module("""
+        edict_entity :project, from: :project_id
+        authorize ["save", "publish"], :write
+        """)
+
+      assert module.__edict_authorizations__() == %{
+               "save" => {:write, :project_id, :project},
+               "publish" => {:write, :project_id, :project}
+             }
+    end
+
+    test "the keyword form still works and mixes with the sugar forms" do
+      module =
+        compile_authorize_module("""
+        edict_entity :project, from: :project_id
+        authorize "delete", :delete
+        authorize ["save", "publish"], :write
+        authorize "export", permission: :billing, entity_from_assigns: :project_id, entity_type: :project
+        """)
+
+      assert module.__edict_authorizations__() == %{
+               "delete" => {:delete, :project_id, :project},
+               "save" => {:write, :project_id, :project},
+               "publish" => {:write, :project_id, :project},
+               "export" => {:billing, :project_id, :project}
+             }
+    end
+
+    test "a list of events with keyword options shares them" do
+      module =
+        compile_authorize_module("""
+        authorize ["one", "two"], permission: :write, entity_from_assigns: :project_id, entity_type: :project
+        """)
+
+      assert module.__edict_authorizations__() == %{
+               "one" => {:write, :project_id, :project},
+               "two" => {:write, :project_id, :project}
+             }
+    end
+
+    test "authorize with a permission atom but no edict_entity fails to compile" do
+      assert_raise CompileError, ~r/edict_entity/, fn ->
+        compile_authorize_module(~s|authorize "delete", :delete|)
+      end
+    end
+
+    test "a second edict_entity fails to compile" do
+      assert_raise CompileError, ~r/once/, fn ->
+        compile_authorize_module("""
+        edict_entity :project, from: :project_id
+        edict_entity :team, from: :team_id
+        """)
+      end
+    end
+
+    test "edict_entity without :from fails to compile" do
+      assert_raise CompileError, ~r/:from/, fn ->
+        compile_authorize_module(~s|edict_entity :project|)
+      end
+    end
+
+    test "a non-literal permission fails with a clear message" do
+      assert_raise CompileError, ~r/permission atom or keyword options/, fn ->
+        compile_authorize(~s|authorize "delete", @permission|)
+      end
     end
   end
 
@@ -183,5 +278,10 @@ defmodule Edict.Enforcement.AuthorizeTest do
       def render(assigns), do: ~H""
     end
     """)
+  end
+
+  defp compile_authorize_module(declaration) do
+    [{module, _binary}] = compile_authorize(declaration)
+    module
   end
 end

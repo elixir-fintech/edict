@@ -31,7 +31,7 @@ defmodule Edict.Enforcement.LiveViewTest do
 
     opts = %{
       edict_config: edict_config,
-      action: :read,
+      permission: :read,
       entity_type: :project,
       entity_from: fn params -> params["id"] end
     }
@@ -135,9 +135,9 @@ defmodule Edict.Enforcement.LiveViewTest do
     end
   end
 
-  test "mount rejects missing :action", %{opts: opts, socket: socket, params: params} do
-    assert_raise ArgumentError, ~r/:action/, fn ->
-      EdictLiveView.on_mount(Map.delete(opts, :action), params, %{}, socket)
+  test "mount rejects missing :permission", %{opts: opts, socket: socket, params: params} do
+    assert_raise ArgumentError, ~r/:permission/, fn ->
+      EdictLiveView.on_mount(Map.delete(opts, :permission), params, %{}, socket)
     end
   end
 
@@ -153,12 +153,12 @@ defmodule Edict.Enforcement.LiveViewTest do
     end
   end
 
-  test "mount raises for an action the entity type does not define", %{
+  test "mount raises for a permission the entity type does not define", %{
     opts: opts,
     socket: socket,
     params: params
   } do
-    typo_opts = Map.put(opts, :action, :aprove)
+    typo_opts = Map.put(opts, :permission, :aprove)
 
     assert_raise ArgumentError, ~r/:aprove/, fn ->
       EdictLiveView.on_mount(typo_opts, params, %{}, socket)

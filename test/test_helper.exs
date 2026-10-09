@@ -1,4 +1,5 @@
 {:ok, _} = Edict.Test.Repo.start_link()
+{:ok, _} = Edict.Test.Endpoint.start_link()
 
 # Run migrations
 Ecto.Migrator.up(Edict.Test.Repo, 0, Edict.Test.Migrations, log: false)

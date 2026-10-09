@@ -32,14 +32,14 @@ defmodule Edict.Enforcement.AuthorizedTest do
     })
   end
 
-  test "denies a strong action revoked in the DB despite a stale document", %{
+  test "denies a strong permission revoked in the DB despite a stale document", %{
     config: config,
     stale_doc: stale_doc
   } do
     refute Helpers.authorized?(config, stale_doc, :approve_transfer, :account, "7", [])
   end
 
-  test "allows a strong action granted in the DB but missing from the document", %{
+  test "allows a strong permission granted in the DB but missing from the document", %{
     config: config,
     empty_doc: empty_doc
   } do
@@ -48,18 +48,21 @@ defmodule Edict.Enforcement.AuthorizedTest do
     assert Helpers.authorized?(config, empty_doc, :approve_transfer, :account, "7", [])
   end
 
-  test "answers a strong action from the document with strong: false", %{
+  test "answers a strong permission from the document with strong: false", %{
     config: config,
     stale_doc: stale_doc
   } do
     assert Helpers.authorized?(config, stale_doc, :approve_transfer, :account, "7", strong: false)
   end
 
-  test "answers a non-strong action from the document", %{config: config, stale_doc: stale_doc} do
+  test "answers a non-strong permission from the document", %{
+    config: config,
+    stale_doc: stale_doc
+  } do
     assert Helpers.authorized?(config, stale_doc, :read, :account, "7", [])
   end
 
-  test "accepts an integer entity ID on a strong action", %{
+  test "accepts an integer entity ID on a strong permission", %{
     config: config,
     empty_doc: empty_doc
   } do
@@ -68,7 +71,7 @@ defmodule Edict.Enforcement.AuthorizedTest do
     assert Helpers.authorized?(config, empty_doc, :approve_transfer, :account, 7, [])
   end
 
-  test "denies a strong action for a role the config no longer defines", %{
+  test "denies a strong permission for a role the config no longer defines", %{
     config: config,
     empty_doc: empty_doc
   } do
@@ -77,7 +80,10 @@ defmodule Edict.Enforcement.AuthorizedTest do
     refute Helpers.authorized?(config, empty_doc, :approve_transfer, :account, "7", [])
   end
 
-  test "denies a strong action with a missing entity ID", %{config: config, stale_doc: stale_doc} do
+  test "denies a strong permission with a missing entity ID", %{
+    config: config,
+    stale_doc: stale_doc
+  } do
     refute Helpers.authorized?(config, stale_doc, :approve_transfer, :account, nil, [])
   end
 
@@ -93,13 +99,13 @@ defmodule Edict.Enforcement.AuthorizedTest do
     end
   end
 
-  test "denies a strong action for a list entity ID without querying", %{stale_doc: stale_doc} do
+  test "denies a strong permission for a list entity ID without querying", %{stale_doc: stale_doc} do
     raising_config = %{repo: Edict.Test.RaisingRepo, config_module: Edict.Test.StrongConfig}
 
     refute Helpers.authorized?(raising_config, stale_doc, :approve_transfer, :account, ["7"], [])
   end
 
-  test "denies a strong action with a missing entity ID without querying", %{
+  test "denies a strong permission with a missing entity ID without querying", %{
     stale_doc: stale_doc
   } do
     raising_config = %{repo: Edict.Test.RaisingRepo, config_module: Edict.Test.StrongConfig}
@@ -107,7 +113,7 @@ defmodule Edict.Enforcement.AuthorizedTest do
     refute Helpers.authorized?(raising_config, stale_doc, :approve_transfer, :account, nil, [])
   end
 
-  test "denies a strong action for an existing role atom the config does not define", %{
+  test "denies a strong permission for an existing role atom the config does not define", %{
     config: config,
     empty_doc: empty_doc
   } do
@@ -117,7 +123,7 @@ defmodule Edict.Enforcement.AuthorizedTest do
     refute Helpers.authorized?(config, empty_doc, :approve_transfer, :account, "7", [])
   end
 
-  test "a nil document with a valid ID raises a descriptive error for a strong action", %{
+  test "a nil document with a valid ID raises a descriptive error for a strong permission", %{
     config: config
   } do
     assert_raise ArgumentError, ~r/current_user_roles/, fn ->
@@ -125,7 +131,7 @@ defmodule Edict.Enforcement.AuthorizedTest do
     end
   end
 
-  test "a nil document with a valid ID raises a descriptive error for a regular action", %{
+  test "a nil document with a valid ID raises a descriptive error for a non-strong permission", %{
     config: config
   } do
     assert_raise ArgumentError, ~r/current_user_roles/, fn ->
