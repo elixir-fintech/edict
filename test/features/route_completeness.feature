@@ -47,3 +47,13 @@ Feature: Route completeness
     Given the router uses Edict.Router
     When a resources declaration is made inside an unguarded block
     Then that router compiles without Edict errors
+
+  Scenario: An entity_from that is not a remote capture fails compilation
+    Given the router uses Edict.Router
+    When an edict block takes entity_from as a module and function tuple
+    Then compilation fails instructing to pass a remote capture
+
+  Scenario: An entity_from remote capture compiles
+    Given the router uses Edict.Router
+    When an edict block takes entity_from as a remote capture
+    Then the route is guarded with that resolver
