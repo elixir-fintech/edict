@@ -77,13 +77,16 @@ defmodule Edict.Enforcement.AuthorizeTest do
     assert result.redirected
   end
 
-  test "an undeclared event passes through", %{edict_config: edict_config, viewer_doc: viewer_doc} do
+  test "an undeclared event raises, naming it and both remedies", %{
+    edict_config: edict_config,
+    viewer_doc: viewer_doc
+  } do
     socket =
       build_socket(%{project_id: "7", current_user_roles: viewer_doc, edict_config: edict_config})
 
-    {:cont, result} = run_hook("ping", socket)
-
-    refute result.redirected
+    assert_raise ArgumentError, ~r/"ping".*authorize.*unguarded_events/s, fn ->
+      run_hook("ping", socket)
+    end
   end
 
   test "an event guard raises for a permission the entity type does not define", %{
@@ -140,10 +143,10 @@ defmodule Edict.Enforcement.AuthorizeTest do
     assert_raise ArgumentError, ~r/current_user_roles/, fn -> run_hook("delete", socket) end
   end
 
-  test "use registers the hook as an on_mount" do
-    mount_ids = Enum.map(TestLiveView.__live__().lifecycle.mount, & &1.id)
-
-    assert {Authorize, TestLiveView} in mount_ids
+  # The router's edict block installs the event guard (in its live_session),
+  # so a view's own `use` must not attach it a second time.
+  test "use registers no on_mount" do
+    assert TestLiveView.__live__().lifecycle.mount == []
   end
 
   test "a non-string event name fails to compile" do
@@ -262,7 +265,7 @@ defmodule Edict.Enforcement.AuthorizeTest do
   end
 
   defp run_hook(event, socket) do
-    {:cont, mounted} = Authorize.on_mount(TestLiveView, %{}, %{}, socket)
+    {:cont, mounted} = Authorize.on_mount(:event_guard, %{}, %{}, %{socket | view: TestLiveView})
     [hook] = mounted.private.lifecycle.handle_event
     hook.function.(event, %{}, mounted)
   end

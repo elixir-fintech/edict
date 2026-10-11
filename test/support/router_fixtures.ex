@@ -44,10 +44,12 @@ end
 
 defmodule Edict.Test.RouterLive do
   @moduledoc """
-  Minimal LiveView for live route features.
+  Minimal LiveView for live route features. Views routed in an `edict`
+  block must use `Edict.Enforcement.Authorize`; this one handles no events.
   """
 
   use Phoenix.LiveView
+  use Edict.Enforcement.Authorize
 
   def render(assigns), do: ~H""
 end
@@ -56,7 +58,20 @@ defmodule Edict.Test.Endpoint do
   @moduledoc """
   Minimal Phoenix endpoint: live routes need one to complete their initial
   render. Configured under `config :edict, Edict.Test.Endpoint`.
+
+  For `Phoenix.LiveViewTest` scenarios it also serves the LiveView socket
+  and dispatches each request to the router the scenario compiled, which the
+  conn carries in `conn.private[:edict_test_router]`.
   """
 
   use Phoenix.Endpoint, otp_app: :edict
+
+  socket "/live", Phoenix.LiveView.Socket
+
+  plug :dispatch
+
+  def dispatch(conn, _opts) do
+    router = conn.private.edict_test_router
+    router.call(conn, router.init([]))
+  end
 end
