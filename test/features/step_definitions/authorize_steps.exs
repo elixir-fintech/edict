@@ -112,7 +112,9 @@ defmodule Edict.Features.StepDefinitions.AuthorizeSteps do
   defp document(context, user), do: Helpers.load_document(context.project_config, user)
 
   defp run_event(socket, event) do
-    {:cont, mounted} = Authorize.on_mount(GuardedProjectLive, %{}, %{}, socket)
+    {:cont, mounted} =
+      Authorize.on_mount(:event_guard, %{}, %{}, %{socket | view: GuardedProjectLive})
+
     [hook] = mounted.private.lifecycle.handle_event
 
     try do

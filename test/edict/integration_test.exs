@@ -334,7 +334,7 @@ defmodule Edict.IntegrationTest do
         })
 
       {:cont, mounted} =
-        Authorize.on_mount(StrongEventLiveView, %{}, %{}, socket)
+        Authorize.on_mount(:event_guard, %{}, %{}, %{socket | view: StrongEventLiveView})
 
       [hook] = mounted.private.lifecycle.handle_event
 

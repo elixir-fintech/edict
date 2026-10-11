@@ -113,6 +113,32 @@ defmodule Edict.Test.RouterFactory do
     |> router.call(router.init(nil))
   end
 
+  @doc """
+  Mounts the LiveView routed at `path` the way Phoenix does: the route's
+  `live_session` `on_mount` hooks run before the view's own, through
+  `Phoenix.LiveView.Lifecycle.mount/3`, and the view's `mount/3` runs only
+  when every hook continued. Returns `{:cont, socket}` or the halting hook's
+  result; a raising hook raises.
+  """
+  @spec mount_routed(module(), String.t(), map()) ::
+          {:cont, Phoenix.LiveView.Socket.t()} | {:halt, Phoenix.LiveView.Socket.t()}
+  def mount_routed(router, path, assigns) do
+    %{phoenix_live_view: {view, _action, _opts, live_session}, path_params: params} =
+      Phoenix.Router.route_info(router, "GET", path, "localhost")
+
+    # Phoenix.LiveView.Channel's load_lifecycle/2: session hooks first.
+    lifecycle = view.__live__().lifecycle
+    lifecycle = %{lifecycle | mount: live_session.extra.on_mount ++ lifecycle.mount}
+
+    socket = Edict.Test.LiveSocket.build(assigns)
+    socket = %{socket | view: view, private: Map.put(socket.private, :lifecycle, lifecycle)}
+
+    with {:cont, socket} <- Phoenix.LiveView.Lifecycle.mount(params, %{}, socket) do
+      {:ok, socket} = view.mount(params, %{}, socket)
+      {:cont, socket}
+    end
+  end
+
   defp format_opts([]), do: ""
 
   defp format_opts(opts),

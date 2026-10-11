@@ -1,6 +1,6 @@
 Feature: Authorize event guards
   Declared LiveView events are checked before the handler runs. Denied
-  events never reach it; undeclared events pass through untouched.
+  events never reach it; undeclared events raise.
 
   Background:
     Given a LiveView guarding "delete" with "delete" and "update" with "write" on project from assign "project_id"
@@ -15,10 +15,10 @@ Feature: Authorize event guards
     When bob sends the "delete" event for project "7"
     Then the event halts with a redirect
 
-  Scenario: An undeclared event passes through
+  Scenario: An undeclared event raises
     Given user "bob" has the role "viewer" on project "7"
     When bob sends the undeclared "ping" event for project "7"
-    Then the event continues to the handler
+    Then the event raises ArgumentError
 
   Scenario: A missing entity assign denies the event
     Given user "alice" has the role "admin" on project "7"

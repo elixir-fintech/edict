@@ -61,8 +61,11 @@ defmodule Edict.Router do
   mount hook with the block options: it checks the permission, assigns
   `current_user_roles` for `Edict.Enforcement.Authorize` guards and
   `Edict.can?`, and re-runs the check on every role change for the user
-  (`on_unauthorized` must then redirect the socket). The block *is* the live
-  session: one block, one permission, one session; do not nest
+  (`on_unauthorized` must then redirect the socket). After the mount check
+  the session installs the event guard: the view must `use
+  Edict.Enforcement.Authorize` (it fails to mount otherwise), and an event
+  neither `authorize`d nor listed in `unguarded_events` raises. The block
+  *is* the live session: one block, one permission, one session; do not nest
   `live_session` inside it.
 
   Routing is the only supported way to guard a LiveView. A LiveView rendered
@@ -142,9 +145,14 @@ defmodule Edict.Router do
     body =
       if is_atom_present(permission) do
         # The app's own hooks (typically authentication) run before Edict's:
-        # the mount hook resolves the user from socket assigns they set.
+        # the mount hook resolves the user from socket assigns they set. The
+        # event guard comes last, once the mount check has passed.
         on_mount_hooks =
-          List.wrap(on_mount) ++ [{Edict.LiveView, guard_opts(entity_type, permission, opts)}]
+          List.wrap(on_mount) ++
+            [
+              {Edict.LiveView, guard_opts(entity_type, permission, opts)},
+              {Edict.Enforcement.Authorize, :event_guard}
+            ]
 
         session = :"edict_#{entity_type}_#{permission}_#{System.unique_integer([:positive])}"
 
