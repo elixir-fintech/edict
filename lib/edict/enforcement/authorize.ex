@@ -111,8 +111,6 @@ defmodule Edict.Enforcement.Authorize do
 
       Module.register_attribute(__MODULE__, :edict_authorizations, accumulate: true)
       Module.register_attribute(__MODULE__, :edict_unguarded_events, accumulate: true)
-      Module.register_attribute(__MODULE__, :edict_entity, accumulate: false)
-      Module.put_attribute(__MODULE__, :edict_entity, nil)
       @before_compile Edict.Enforcement.Authorize
       import Edict.Enforcement.Authorize,
         only: [authorize: 2, edict_entity: 1, edict_entity: 2, unguarded_events: 1]
