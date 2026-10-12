@@ -208,6 +208,78 @@ defmodule Edict.Features.StepDefinitions.RouteCompletenessSteps do
     context
   end
 
+  # The route's own path carries no param; the block's scope adds none
+  # either, so the full path "/archive/:id" can never yield the entity ID.
+  step "a route whose full path lacks {string} is declared inside an edict block with param {string}",
+       %{args: [_segment, param]} = context do
+    compilation =
+      RouterFactory.try_compile("""
+      edict :project, [param: "#{param}"] do
+        scope "/archive" do
+          get "/:id", Edict.Test.EchoPlug, :show
+        end
+      end
+      """)
+
+    context
+    |> Map.put(:compilation, compilation)
+    |> Map.put(:full_path, "/archive/:id")
+  end
+
+  step "a live route whose full path lacks {string} is declared inside an edict block with param {string}",
+       %{args: [_segment, param]} = context do
+    compilation =
+      RouterFactory.try_compile("""
+      edict :project, [param: "#{param}", permission: :read] do
+        scope "/archive" do
+          live "/:id", Edict.Test.RouterLive
+        end
+      end
+      """)
+
+    context
+    |> Map.put(:compilation, compilation)
+    |> Map.put(:full_path, "/archive/:id")
+  end
+
+  step "compilation fails naming the route's full path, {string} and both remedies",
+       %{args: [param]} = context do
+    {:error, %CompileError{} = error} = context.compilation
+    description = error.description
+
+    assert description =~ context.full_path
+    assert description =~ ":#{param}"
+    assert description =~ "query or body"
+    assert description =~ "entity_from"
+    context
+  end
+
+  step "a route is declared in a scope {string} inside an edict block with param {string}",
+       %{args: [scope_path, param]} = context do
+    compilation =
+      RouterFactory.try_compile("""
+      edict :project, [param: "#{param}"] do
+        scope "#{scope_path}" do
+          get "/", Edict.Test.EchoPlug, :show
+        end
+      end
+      """)
+
+    Map.put(context, :compilation, compilation)
+  end
+
+  step "a route without {string} is declared inside an edict block with an entity_from resolver",
+       context do
+    compilation =
+      RouterFactory.try_compile("""
+      edict :project, [entity_from: &Edict.Test.EntityIds.project_id/1] do
+        get "/archive/:id", Edict.Test.EchoPlug, :show
+      end
+      """)
+
+    Map.put(context, :compilation, compilation)
+  end
+
   defp route_body, do: ~s|get "/outside", Edict.Test.EchoPlug, :show|
   defp live_body, do: ~s|live "/outside", Edict.Test.RouterLive|
 end
