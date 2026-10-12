@@ -37,7 +37,10 @@ defmodule Edict.Router do
   `edict entity_type, opts do ... end` guards every route inside. Options:
 
     * `:param` / `:entity_from` — where the entity ID comes from; one of them
-      is required. `:entity_from` must be a remote capture
+      is required. With `:param`, every route's full path (enclosing scopes
+      included) must contain a `:param` or `*param` segment, or compilation
+      fails. An ID from the query string or body is resolved with
+      `:entity_from`, which must be a remote capture
       (`&MyAppWeb.Ids.from_conn/1`): block options are stored at compile
       time, so anonymous functions do not compile. Controller routes call it
       with the conn, live routes with the route params
@@ -232,6 +235,8 @@ defmodule Edict.Router do
             )
 
           {:edict, _, _} = context ->
+            Edict.Router.__require_param__!(__MODULE__, unquote(verb), unquote(path), context)
+
             guard_opts =
               Edict.Router.__controller_guard_opts__(
                 context,
@@ -292,6 +297,7 @@ defmodule Edict.Router do
           )
 
         {:edict, entity_type, _block_opts} = context ->
+          Edict.Router.__require_param__!(__MODULE__, :live, unquote(path), context)
           mount_opts = Edict.Router.__live_mount_opts__(context, unquote(path), config_module)
 
           Edict.Router.__record__(__MODULE__, %{
@@ -453,6 +459,32 @@ defmodule Edict.Router do
 
   @doc false
   def __record__(module, entry), do: Module.put_attribute(module, :edict_routes, entry)
+
+  # A param: route must carry the param in its full path (enclosing scopes
+  # included): a missing segment is a declaration mistake that would deny
+  # every request. An ID taken from the query string or body is declared
+  # with entity_from: instead, which is exempt, so the router states where
+  # every entity ID comes from.
+  @doc false
+  def __require_param__!(module, verb, path, {:edict, _entity_type, block_opts}) do
+    param = block_opts[:param]
+    full_path = Phoenix.Router.scoped_path(module, path)
+
+    unless block_opts[:entity_from] || path_param?(full_path, param) do
+      raise CompileError,
+        description:
+          "#{describe(verb)} #{inspect(full_path)} is inside an edict block with " <>
+            "param: #{inspect(param)}, but its path has no :#{param} segment. Put " <>
+            ":#{param} in the path; for an entity ID in the query or body, resolve " <>
+            "it with entity_from: instead"
+    end
+  end
+
+  defp path_param?(path, param) do
+    path
+    |> String.split("/", trim: true)
+    |> Enum.any?(&(&1 in [":" <> param, "*" <> param]))
+  end
 
   @doc false
   def __controller_guard_opts__(

@@ -321,7 +321,9 @@ always denied.
 A permission the config does not define for the entity type (a typo such as `:aprove`) raises
 `ArgumentError` instead of silently denying every request.
 
-`param:` names the request param holding the entity ID. When the ID needs custom extraction,
+`param:` names the path param holding the entity ID: every route in the block, nested scopes
+included, must have a `:project_id` (or `*project_id`) segment in its full path, or the router
+fails to compile. When the ID comes from the query string or body, or needs custom extraction,
 pass `entity_from:` instead. Block options are stored at compile time, so it must be a remote
 capture such as `&MyAppWeb.ProjectIds.from_conn/1`; anonymous functions do not compile.
 Controller routes call it with the conn; live routes call it with the route params.

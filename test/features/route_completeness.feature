@@ -57,3 +57,23 @@ Feature: Route completeness
     Given the router uses Edict.Router
     When an edict block takes entity_from as a remote capture
     Then the route is guarded with that resolver
+
+  Scenario: A route without the block's param fails compilation
+    Given the router uses Edict.Router
+    When a route whose full path lacks ":project_id" is declared inside an edict block with param "project_id"
+    Then compilation fails naming the route's full path, "project_id" and both remedies
+
+  Scenario: A route in a nested scope carrying the param compiles
+    Given the router uses Edict.Router
+    When a route is declared in a scope "/projects/:project_id/settings" inside an edict block with param "project_id"
+    Then that router compiles without Edict errors
+
+  Scenario: A live route without the block's param fails compilation
+    Given the router uses Edict.Router
+    When a live route whose full path lacks ":project_id" is declared inside an edict block with param "project_id"
+    Then compilation fails naming the route's full path, "project_id" and both remedies
+
+  Scenario: A block using entity_from is exempt
+    Given the router uses Edict.Router
+    When a route without ":project_id" is declared inside an edict block with an entity_from resolver
+    Then that router compiles without Edict errors
